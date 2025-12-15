@@ -1,0 +1,925 @@
+import React, {useState, useEffect} from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import Grid from './Grid';
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const timeNames = ['Alex','Sam','Jordan','Taylor','Casey','Avery','Robin','Charlie','Drew','Riley','Morgan','Quinn','Harper','Logan','Jamie'];
+const destinations = ['a friend\'s house','school','the shop','the park','the library','the cinema','swimming practice','football training','a cafe','the museum'];
+
+// Fraction display component
+function Fraction({numerator, denominator, size = 16}) {
+  return (
+    <View style={{alignItems: 'center', marginHorizontal: 4}}>
+      <Text style={{fontSize: size, fontWeight: '500'}}>{numerator}</Text>
+      <View style={{height: 1.5, backgroundColor: '#000', width: Math.max(String(numerator).length, String(denominator).length) * size * 0.6, marginVertical: 2}} />
+      <Text style={{fontSize: size, fontWeight: '500'}}>{denominator}</Text>
+    </View>
+  );
+}
+const cityRoutes = [
+  { route: 'London to Paris', stations: ['London', 'Paris'], times: [['06:18', '08:35'], ['07:24', '09:45'], ['10:30', '12:50']] },
+  { route: 'Manchester to London', stations: ['Manchester', 'London'], times: [['08:15', '11:20'], ['09:40', '12:45'], ['14:10', '17:15']] },
+  { route: 'Edinburgh to Birmingham', stations: ['Edinburgh', 'Birmingham'], times: [['07:00', '13:45'], ['09:30', '16:15'], ['12:00', '18:50']] },
+  { route: 'London to Sheffield', stations: ['London', 'Sheffield'], times: [['09:15', '11:30'], ['11:45', '14:00'], ['15:20', '17:35']] },
+  { route: 'Cardiff to Bristol', stations: ['Cardiff', 'Bristol'], times: [['07:05', '08:25'], ['09:10', '10:30'], ['12:40', '14:00']] },
+  { route: 'Leeds to York', stations: ['Leeds', 'York'], times: [['06:50', '07:20'], ['08:05', '08:35'], ['10:25', '10:55']] }
+];
+
+function generateQuestion(topic){
+  const a = Math.floor(Math.random()*12)+1;
+  const b = Math.floor(Math.random()*12)+1;
+  let op, expr, answer;
+  
+  if(topic === 'addition-subtraction'){
+    op = Math.random() > 0.5 ? '+' : '-';
+    expr = `${a} ${op} ${b} = ?`;
+    // eslint-disable-next-line no-eval
+    answer = eval(`${a} ${op} ${b}`);
+    return {expr, answer, parts: null};
+  } else if(topic === 'multiplication-division'){
+    op = Math.random() > 0.5 ? '*' : '÷';
+    expr = `${a} ${op} ${b} = ?`;
+    // eslint-disable-next-line no-eval
+    const evalExpr = `${a} ${op} ${b}`.replace('÷', '/');
+    answer = Math.round(eval(evalExpr) * 100) / 100;
+    return {expr, answer, parts: null};
+  } else if(topic === 'time'){
+    const timeTypes = ['unit-conversion', 'duration-difference', 'simple-journey', 'complex-journey', 'film-duration', 'timetable'];
+    const timeType = timeTypes[Math.floor(Math.random() * timeTypes.length)];
+    
+    if(timeType === 'unit-conversion'){
+      // Simple unit conversions: minutes to hours or hours to minutes
+      const conversionTypes = ['min-to-hr', 'hr-to-min'];
+      const convType = conversionTypes[Math.floor(Math.random()*2)];
+      
+      if(convType === 'min-to-hr'){
+        const minutes = (Math.floor(Math.random()*6)+1) * 60; // 60, 120, 180, ..., 360 minutes
+        expr = `Change ${minutes} minutes to hours.`;
+        answer = minutes / 60;
+        return {expr, answer, parts: null};
+      } else {
+        const hours = Math.floor(Math.random()*10)+1;
+        expr = `Change ${hours} hours to minutes.`;
+        answer = hours * 60;
+        return {expr, answer, parts: null};
+      }
+    } else if(timeType === 'duration-difference'){
+      // Work out the difference between two durations
+      const mins1 = (Math.floor(Math.random()*30)+25);
+      const hrs2 = Math.floor(Math.random()*3)+1;
+      const mins2 = (Math.floor(Math.random()*4)+1) * 15; // 15, 30, 45, 60 minutes
+      
+      const totalMins1 = mins1;
+      const totalMins2 = hrs2 * 60 + mins2;
+      const diffMins = Math.abs(totalMins2 - totalMins1);
+      
+      expr = `Work out the difference, in minutes, between ${mins1} minutes and ${hrs2} hour${hrs2>1?'s':''} ${mins2 === 60 ? '(1 hour)' : mins2} minutes.`;
+      answer = diffMins;
+      return {expr, answer, parts: null};
+    } else if(timeType === 'simple-journey'){
+      const startHr = Math.floor(Math.random()*8)+8;
+      const startMin = [0, 10, 15, 20, 30, 40, 45, 50][Math.floor(Math.random()*8)];
+      const leg1 = Math.floor(Math.random()*45)+8;
+      const wait = Math.floor(Math.random()*25)+5;
+      const leg2 = Math.floor(Math.random()*45)+8;
+      const traveller = pick(timeNames);
+      const dest = pick(destinations);
+
+      expr = `${traveller} left home at ${startHr}:${startMin.toString().padStart(2,'0')}\n${traveller} walked for ${leg1} minutes.\n${traveller} waited for ${wait} minutes.\n${traveller} then walked for another ${leg2} minutes to ${dest}.`;
+      
+      const totalMin = startHr*60 + startMin + leg1 + wait + leg2;
+      const endHr = Math.floor(totalMin/60);
+      const endMin = totalMin % 60;
+      const arrival = `${endHr}:${endMin.toString().padStart(2,'0')}`;
+      const walkTotal = leg1 + leg2;
+      return {expr, answer: null, parts: [
+        { question: `How many minutes did ${traveller} walk in total?`, answer: walkTotal },
+        { question: `What time did ${traveller} arrive? (HH:MM)`, answer: arrival }
+      ]};
+    } else if(timeType === 'complex-journey'){
+      // Like Hayley's or Natalie's journey - multi-step with breaks and fractions
+      const startHr = Math.floor(Math.random()*3)+9; // 9-11 am
+      const startMin = [0, 10, 20, 30, 40, 50][Math.floor(Math.random()*6)];
+      
+      const leg1 = Math.floor(Math.random()*35)+12;
+      const shopWait = Math.floor(Math.random()*20)+8;
+      const leg2 = Math.floor(Math.random()*35)+15;
+      
+      const name = pick(timeNames);
+      const dest = pick(destinations);
+      const stop = pick(['the shop','the bakery','a newsagent','the market','a kiosk']);
+      
+      expr = `${name} left home at ${startHr}:${startMin.toString().padStart(2,'0')}\n${name} walked to ${stop}, taking ${leg1} minutes.\n${name} was there for ${shopWait} minutes.\nThen ${name} walked to ${dest}, taking ${leg2} minutes.\nWhat time did ${name} arrive at ${dest}?`;
+      
+      const totalMin = startHr*60 + startMin + leg1 + shopWait + leg2;
+      const endHr = Math.floor(totalMin/60);
+      const endMin = totalMin % 60;
+      const arrival = `${endHr}:${endMin.toString().padStart(2,'0')}`;
+      answer = arrival;
+      return {expr, answer, parts: null};
+    } else if(timeType === 'film-duration'){
+      const startHr = Math.floor(Math.random()*6)+14;
+      const startMin = [0, 15, 30, 45][Math.floor(Math.random()*4)];
+      const duration = Math.floor(Math.random()*60)+60;
+      
+      expr = `A film started at ${startHr}:${startMin.toString().padStart(2,'0')}.\nThe film lasted ${Math.floor(duration/60)} hours and ${duration%60} minutes.`;
+      
+      const totalMin = startHr*60 + startMin + duration;
+      const endHr = Math.floor(totalMin/60);
+      const endMin = totalMin % 60;
+      const finish = `${endHr}:${endMin.toString().padStart(2,'0')}`;
+      return {expr, answer: null, parts: [
+        { question: 'How long was the film (minutes)?', answer: duration },
+        { question: 'What time did the film finish? (HH:MM)', answer: finish }
+      ]};
+    } else if(timeType === 'timetable'){
+      // Create realistic timetable data with multiple columns
+      const selectedTable = pick(cityRoutes);
+      const selectedTimeIndex = Math.floor(Math.random()*selectedTable.times.length);
+      const selectedTimes = selectedTable.times[selectedTimeIndex];
+      
+      const depTime = selectedTimes[0];
+      const arrTime = selectedTimes[1];
+      
+      const [depHr, depMin] = depTime.split(':').map(Number);
+      const [arrHr, arrMin] = arrTime.split(':').map(Number);
+      
+      const depTotalMin = depHr * 60 + depMin;
+      const arrTotalMin = arrHr * 60 + arrMin;
+      const journeyMin = arrTotalMin - depTotalMin;
+      const journeyHr = Math.floor(journeyMin / 60);
+      
+      const tableData = {
+        route: selectedTable.route,
+        stations: selectedTable.stations,
+        allTimes: selectedTable.times,
+        selectedIndex: selectedTimeIndex
+      };
+      
+      const parts = [
+        {
+          question: `A train leaves at ${depTime}, how many minutes does it take to reach ${selectedTable.stations[1]}?`,
+          answer: journeyMin
+        },
+        {
+          question: `What is the journey time in hours and minutes?`,
+          answer: `${journeyHr}:${(journeyMin % 60).toString().padStart(2,'0')}`
+        }
+      ];
+      
+      return {expr: null, table: tableData, answer: null, parts: parts};
+    }
+  } else if(topic === 'metric-conversions'){
+    // Metric conversion question types based on sample worksheet
+    const types = ['g-to-kg','kg-to-g','km-to-m','m-to-km','cm-to-mm','mm-to-cm','ml-to-l','l-to-ml'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    let value, exprVal;
+
+    if(t === 'g-to-kg'){
+      value = (Math.floor(Math.random()*50)+1) * 10; // grams e.g., 10..500
+      expr = `Change ${value} grams to kilograms.`;
+      answer = value / 1000;
+    } else if(t === 'kg-to-g'){
+      value = (Math.floor(Math.random()*10)+1) * 1; // kilograms e.g., 1..20
+      expr = `Change ${value} kilograms to grams.`;
+      answer = value * 1000;
+    } else if(t === 'km-to-m'){
+      value = (Math.floor(Math.random()*9)+1) + Math.floor(Math.random()*9)/10; // e.g., 1.0 - 9.8 km
+      expr = `Change ${value} kilometres to metres.`;
+      answer = Math.round(value * 1000);
+    } else if(t === 'm-to-km'){
+      value = (Math.floor(Math.random()*900)+10); // metres e.g., 10..909
+      expr = `Change ${value} metres to kilometres.`;
+      answer = value / 1000;
+    } else if(t === 'cm-to-mm'){
+      value = (Math.floor(Math.random()*99)+1); // cm 1..99
+      expr = `Change ${value} cm to mm.`;
+      answer = value * 10;
+    } else if(t === 'mm-to-cm'){
+      value = (Math.floor(Math.random()*900)+10); // mm
+      expr = `Change ${value} mm to cm.`;
+      answer = value / 10;
+    } else if(t === 'ml-to-l'){
+      value = (Math.floor(Math.random()*25)+1) * 10; // ml
+      expr = `Change ${value} millilitres to litres.`;
+      answer = value / 1000;
+    } else if(t === 'l-to-ml'){
+      value = (Math.floor(Math.random()*5)+1) + (Math.random()>0.5?0.5:0); // litres 1,1.5,2..
+      expr = `Change ${value} litres to millilitres.`;
+      answer = Math.round(value * 1000);
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'fractions'){
+    const types = ['simplify', 'equivalent', 'compare', 'non-equivalent', 'word-problem', 'ordering', 'closer-to'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+    
+    if(t === 'simplify'){
+      const num = Math.floor(Math.random()*24)+6;
+      const denom = Math.floor(Math.random()*24)+6;
+      const g = gcd(num, denom);
+      return {
+        expr: 'Simplify',
+        fraction: {num, denom},
+        answer: `${num/g}/${denom/g}`,
+        answerFraction: {num: num/g, denom: denom/g},
+        parts: null
+      };
+    } else if(t === 'equivalent'){
+      const num = Math.floor(Math.random()*6)+2;
+      const denom = Math.floor(Math.random()*6)+3;
+      const factor = Math.floor(Math.random()*4)+2;
+      return {
+        expr: 'equivalent',
+        fraction1: {num, denom},
+        fraction2: {num: '?', denom: denom * factor},
+        answer: num * factor,
+        parts: null
+      };
+    } else if(t === 'compare'){
+      const num1 = Math.floor(Math.random()*8)+1;
+      const denom1 = Math.floor(Math.random()*6)+3;
+      const num2 = Math.floor(Math.random()*8)+1;
+      const denom2 = Math.floor(Math.random()*6)+3;
+      const val1 = num1/denom1;
+      const val2 = num2/denom2;
+      return {
+        expr: 'compare',
+        fraction1: {num: num1, denom: denom1},
+        fraction2: {num: num2, denom: denom2},
+        answer: val1 > val2 ? `${num1}/${denom1}` : `${num2}/${denom2}`,
+        answerFraction: val1 > val2 ? {num: num1, denom: denom1} : {num: num2, denom: denom2},
+        parts: null
+      };
+    } else if(t === 'non-equivalent'){
+      // Generate a target fraction and several equivalent fractions, plus one non-equivalent
+      const targetNum = Math.floor(Math.random()*4)+2;
+      const targetDenom = Math.floor(Math.random()*4)+3;
+      const fractions = [];
+      
+      // Add 3-4 equivalent fractions
+      for(let i=0; i<4; i++){
+        const mult = i+2;
+        fractions.push({num: targetNum*mult, denom: targetDenom*mult});
+      }
+      
+      // Add one non-equivalent fraction
+      let nonEqNum, nonEqDenom;
+      do {
+        nonEqNum = Math.floor(Math.random()*20)+5;
+        nonEqDenom = Math.floor(Math.random()*20)+10;
+        const g = gcd(nonEqNum, nonEqDenom);
+        nonEqNum /= g;
+        nonEqDenom /= g;
+      } while(Math.abs(nonEqNum/nonEqDenom - targetNum/targetDenom) < 0.05);
+      
+      const nonEqIdx = Math.floor(Math.random()*5);
+      fractions.splice(nonEqIdx, 0, {num: nonEqNum, denom: nonEqDenom});
+      fractions.length = 5; // Keep only 5
+      
+      return {
+        expr: 'non-equivalent',
+        targetFraction: {num: targetNum, denom: targetDenom},
+        fractionList: fractions,
+        answer: `${nonEqNum}/${nonEqDenom}`,
+        parts: null
+      };
+    } else if(t === 'word-problem'){
+      const problemTypes = ['sweets', 'counters', 'pens'];
+      const pType = pick(problemTypes);
+      
+      if(pType === 'sweets'){
+        const total = [12, 15, 18, 20, 24, 26, 30][Math.floor(Math.random()*7)];
+        const red = Math.floor(Math.random()*(total-5))+3;
+        const g = gcd(red, total);
+        expr = `There are ${total} sweets in a bag.\n${red} of the sweets are red.\nThe rest of the sweets are white.\n\nWhat fraction of the sweets are red?`;
+        answer = `${red/g}/${total/g}`;
+        return {expr, answer, parts: null};
+      } else if(pType === 'counters'){
+        const colors = ['Red', 'Blue', 'Yellow', 'Green'];
+        const total = [15, 17, 20, 22][Math.floor(Math.random()*4)];
+        const counts = [];
+        let sum = 0;
+        for(let i=0; i<3; i++){
+          const c = Math.floor(Math.random()*(total-sum-3))+2;
+          counts.push(c);
+          sum += c;
+        }
+        counts.push(total - sum);
+        
+        const targetIdx = Math.floor(Math.random()*4);
+        const targetColor = colors[targetIdx].toLowerCase();
+        const targetCount = counts[targetIdx];
+        const g = gcd(targetCount, total);
+        
+        expr = `There are ${total} counters in a bag.\nThe table shows the number of counters of each colour.\n\nWhat fraction of the counters are ${targetColor}?`;
+        const tableData = {
+          headers: ['Colour', ...colors],
+          rows: [['Number of Counters', ...counts]]
+        };
+        answer = `${targetCount/g}/${total/g}`;
+        return {expr, answer, parts: null, table: tableData};
+      } else {
+        const total = [9, 12, 15, 18][Math.floor(Math.random()*4)];
+        const red = Math.floor(Math.random()*(total-3))+2;
+        const g = gcd(total-red, total);
+        expr = `There are ${total} pens in a box.\n${red} pens are red.\nThe rest of the pens are green.\n\nWhat fraction of the pens are green?`;
+        answer = `${(total-red)/g}/${total/g}`;
+        return {expr, answer, parts: null};
+      }
+    } else if(t === 'ordering'){
+      // Generate 4-5 fractions and ask to order them
+      const count = Math.random() > 0.5 ? 4 : 5;
+      const fractions = [];
+      const denoms = [3, 4, 5, 6, 8, 10, 12, 15, 20, 30];
+      
+      for(let i=0; i<count; i++){
+        const denom = pick(denoms);
+        const num = Math.floor(Math.random()*(denom-1))+1;
+        fractions.push({num, denom, value: num/denom});
+      }
+      
+      fractions.sort((a,b) => a.value - b.value);
+      const answer = fractions.map(f => `${f.num}/${f.denom}`).join(',');
+      
+      // Shuffle for display
+      const shuffled = [...fractions].sort(() => Math.random() - 0.5);
+      
+      return {
+        expr: 'ordering',
+        fractionList: shuffled.map(f => ({num: f.num, denom: f.denom})),
+        answer: answer,
+        parts: null
+      };
+    } else if(t === 'closer-to'){
+      // Which fraction is closer to 1 or 1/2
+      const target = Math.random() > 0.5 ? 1 : 0.5;
+      const targetStr = target === 1 ? '1' : '1/2';
+      
+      const f1Denom = [6, 7, 8, 10, 12][Math.floor(Math.random()*5)];
+      const f1Num = Math.floor(Math.random()*(f1Denom-2))+2;
+      
+      let f2Denom, f2Num;
+      do {
+        f2Denom = [6, 7, 8, 10, 12][Math.floor(Math.random()*5)];
+        f2Num = Math.floor(Math.random()*(f2Denom-2))+2;
+      } while(f1Num/f1Denom === f2Num/f2Denom);
+      
+      const dist1 = Math.abs(f1Num/f1Denom - target);
+      const dist2 = Math.abs(f2Num/f2Denom - target);
+      
+      const closer = dist1 < dist2 ? `${f1Num}/${f1Denom}` : `${f2Num}/${f2Denom}`;
+      
+      return {
+        expr: 'closer-to',
+        targetValue: targetStr,
+        fraction1: {num: f1Num, denom: f1Denom},
+        fraction2: {num: f2Num, denom: f2Denom},
+        answer: closer,
+        parts: null
+      };
+    }
+  } else if(topic === 'place-value'){
+    const types = ['identify-digit', 'write-number'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    
+    if(t === 'identify-digit'){
+      const positionTypes = [
+        {num: Math.floor(Math.random()*900)+100, digit: Math.floor(Math.random()*3), name: ['hundreds', 'tens', 'units'][Math.floor(Math.random()*3)]},
+        {num: Math.floor(Math.random()*9000)+1000, digit: Math.floor(Math.random()*4), name: ['thousands', 'hundreds', 'tens', 'units'][Math.floor(Math.random()*4)]}
+      ];
+      const p = positionTypes[Math.floor(Math.random()*2)];
+      expr = `What is the value of the ${p.name} digit in ${p.num}?`;
+      const strNum = String(p.num);
+      const digitVal = parseInt(strNum[strNum.length - (p.digit + 1)]) * Math.pow(10, p.digit);
+      answer = digitVal;
+      return {expr, answer, parts: null};
+    } else {
+      // write-number
+      const thousands = Math.floor(Math.random()*9)+1;
+      const hundreds = Math.floor(Math.random()*10);
+      const tens = Math.floor(Math.random()*10);
+      const units = Math.floor(Math.random()*10);
+      expr = `Write the number: ${thousands} thousands, ${hundreds} hundreds, ${tens} tens, ${units} units`;
+      answer = thousands * 1000 + hundreds * 100 + tens * 10 + units;
+      return {expr, answer, parts: null};
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'rounding'){
+    const types = ['nearest-10', 'nearest-100', 'nearest-1000', 'decimal-places'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    
+    if(t === 'nearest-10'){
+      const num = Math.floor(Math.random()*900)+100;
+      expr = `Round ${num} to the nearest 10`;
+      answer = Math.round(num / 10) * 10;
+    } else if(t === 'nearest-100'){
+      const num = Math.floor(Math.random()*9000)+1000;
+      expr = `Round ${num} to the nearest 100`;
+      answer = Math.round(num / 100) * 100;
+    } else if(t === 'nearest-1000'){
+      const num = Math.floor(Math.random()*90000)+10000;
+      expr = `Round ${num} to the nearest 1000`;
+      answer = Math.round(num / 1000) * 1000;
+    } else {
+      const num = (Math.random() * 100).toFixed(3);
+      expr = `Round ${num} to 1 decimal place`;
+      answer = Math.round(num * 10) / 10;
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'negative-numbers'){
+    const types = ['addition', 'subtraction', 'multiplication', 'sequence'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    let n1, n2;
+    
+    if(t === 'addition'){
+      n1 = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*12)+1);
+      n2 = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*12)+1);
+      expr = `${n1} + ${n2} = ?`;
+      answer = n1 + n2;
+    } else if(t === 'subtraction'){
+      n1 = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*12)+1);
+      n2 = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*12)+1);
+      expr = `${n1} - ${n2} = ?`;
+      answer = n1 - n2;
+    } else if(t === 'multiplication'){
+      n1 = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*8)+2);
+      n2 = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*8)+2);
+      expr = `${n1} × ${n2} = ?`;
+      answer = n1 * n2;
+    } else {
+      const start = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*10)+1);
+      const diff = (Math.random() > 0.5 ? -1 : 1) * (Math.floor(Math.random()*5)+1);
+      expr = `Sequence: ${start}, ${start + diff}, ${start + 2*diff}, ?, ?`;
+      answer = start + 3*diff;
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'powers-roots'){
+    const types = ['square', 'cube', 'power', 'square-root', 'cube-root'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    
+    if(t === 'square'){
+      const n = Math.floor(Math.random()*12)+2;
+      expr = `${n}² = ?`;
+      answer = n * n;
+    } else if(t === 'cube'){
+      const n = Math.floor(Math.random()*6)+2;
+      expr = `${n}³ = ?`;
+      answer = n * n * n;
+    } else if(t === 'power'){
+      const base = Math.floor(Math.random()*6)+2;
+      const exp = Math.floor(Math.random()*3)+2;
+      expr = `${base}^${exp} = ?`;
+      answer = Math.pow(base, exp);
+    } else if(t === 'square-root'){
+      const n = Math.floor(Math.random()*13)+2;
+      expr = `√${n*n} = ?`;
+      answer = n;
+    } else {
+      const n = Math.floor(Math.random()*5)+2;
+      expr = `∛${n*n*n} = ?`;
+      answer = n;
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'bidmas'){
+    const types = ['brackets', 'order', 'mixed'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    let n1, n2, n3, n4;
+    
+    if(t === 'brackets'){
+      n1 = Math.floor(Math.random()*6)+2;
+      n2 = Math.floor(Math.random()*6)+2;
+      n3 = Math.floor(Math.random()*6)+2;
+      expr = `(${n1} + ${n2}) × ${n3} = ?`;
+      answer = (n1 + n2) * n3;
+    } else if(t === 'order'){
+      n1 = Math.floor(Math.random()*6)+2;
+      n2 = Math.floor(Math.random()*4)+2;
+      n3 = Math.floor(Math.random()*6)+2;
+      expr = `${n1} + ${n2} × ${n3} = ?`;
+      answer = n1 + (n2 * n3);
+    } else {
+      n1 = Math.floor(Math.random()*4)+2;
+      n2 = Math.floor(Math.random()*4)+2;
+      n3 = Math.floor(Math.random()*4)+2;
+      n4 = Math.floor(Math.random()*4)+1;
+      expr = `(${n1} + ${n2}) × ${n3} ÷ ${n4} = ?`;
+      answer = ((n1 + n2) * n3) / n4;
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'factors-multiples'){
+    const types = ['factor', 'multiple', 'prime', 'prime-factorization'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    
+    if(t === 'factor'){
+      const n = Math.floor(Math.random()*20)+10;
+      const factors = [];
+      for(let i = 1; i <= n; i++) if(n % i === 0) factors.push(i);
+      expr = `How many factors does ${n} have?`;
+      answer = factors.length;
+    } else if(t === 'multiple'){
+      const n = Math.floor(Math.random()*10)+3;
+      const mult = Math.floor(Math.random()*4)+2;
+      expr = `What is the ${mult}th multiple of ${n}?`;
+      answer = n * mult;
+    } else if(t === 'prime'){
+      const candidates = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
+      const num = candidates[Math.floor(Math.random()*candidates.length)];
+      expr = `Is ${num} a prime number? (yes/no)`;
+      answer = 'yes';
+    } else {
+      const nums = [12, 18, 20, 24, 30, 36, 40, 42];
+      const n = nums[Math.floor(Math.random()*nums.length)];
+      expr = `Find the prime factorization of ${n}`;
+      answer = `prime factors of ${n}`;
+    }
+    return {expr, answer, parts: null};
+  } else if(topic === 'coordinates'){
+    const questionTypes = [
+      {
+        setup: () => {
+          const x = Math.floor(Math.random()*6)-2;
+          const y = Math.floor(Math.random()*6)-2;
+          const bx = Math.floor(Math.random()*6)-3;
+          const by = Math.floor(Math.random()*6)-4;
+          const cx = Math.floor(Math.random()*6)+1;
+          const cy = Math.floor(Math.random()*6)-3;
+          return {
+            points: {A: [x, y], B: [bx, by], C: [cx, cy]},
+            parts: [
+              {
+                question: `(a) Plot the point with coordinates (${x}, ${y}). Label this point A.`,
+                answer: `${x},${y}`
+              },
+              {
+                question: `(b) Write down the coordinates of the midpoint of BC.`,
+                answer: `${(bx+cx)/2},${(by+cy)/2}`
+              }
+            ]
+          };
+        }
+      },
+      {
+        setup: () => {
+          const ax = Math.floor(Math.random()*6)-2;
+          const ay = Math.floor(Math.random()*6)+1;
+          const bx = Math.floor(Math.random()*6)-3;
+          const by = Math.floor(Math.random()*6)-2;
+          return {
+            points: {A: [ax, ay], B: [bx, by]},
+            parts: [
+              {
+                question: `(a) Write down the coordinates of point A.`,
+                answer: `${ax},${ay}`
+              },
+              {
+                question: `(b) Write down the coordinates of the midpoint of AB.`,
+                answer: `${(ax+bx)/2},${(ay+by)/2}`
+              },
+              {
+                question: `(c) Write down the x-coordinate of point B.`,
+                answer: bx
+              }
+            ]
+          };
+        }
+      }
+    ];
+    
+    const qtypeIdx = Math.floor(Math.random() * questionTypes.length);
+    const qsetup = questionTypes[qtypeIdx].setup();
+    
+    const parts = qsetup.parts.map(p => ({...p}));
+    
+    return {
+      expr: null,
+      coords: qsetup.points,
+      answer: null,
+      parts: parts
+    };
+  } else if(topic === 'pictograms'){
+    const types = ['read', 'complete'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    
+    if(t === 'read'){
+      const key = Math.floor(Math.random()*3)+2;
+      const symbols = Math.floor(Math.random()*8)+3;
+      expr = `A pictogram key shows 1 symbol = ${key} items. There are ${symbols} symbols. How many items?`;
+      answer = key * symbols;
+    } else {
+      const key = Math.floor(Math.random()*3)+2;
+      const items = Math.floor(Math.random()*40)+10;
+      expr = `A pictogram key shows 1 symbol = ${key} items. How many symbols needed for ${items} items?`;
+      answer = items / key;
+    }
+    return {expr, answer, parts: null};
+  } else {
+    const ops = ['+','-','*'];
+    op = ops[Math.floor(Math.random()*ops.length)];
+    expr = `${a} ${op} ${b} = ?`;
+    answer = eval(expr);
+    return {expr, answer, parts: null};
+  }
+}
+
+export default function Quiz({onBack, topic}){
+  const [q, setQ] = useState(generateQuestion(topic));
+  const [input, setInput] = useState('');
+  const [partInputs, setPartInputs] = useState([]);
+  const [score, setScore] = useState(0);
+  const [asked, setAsked] = useState(0);
+  const [feedback, setFeedback] = useState('');
+  const [currentPart, setCurrentPart] = useState(0);
+
+  useEffect(()=>{ 
+    setFeedback(''); 
+    setInput(''); 
+    if(q.parts && q.parts.length){
+      setPartInputs(Array(q.parts.length).fill(''));
+    } else {
+      setPartInputs([]);
+    }
+  },[q]);
+
+  const submit = () => {
+    let correctAnswer;
+    const hasParts = q.parts && q.parts.length > 0;
+    if(hasParts){
+      let localScore = 0;
+      const normalize = (v) => String(v).replace(/\s/g,'').toLowerCase();
+
+      const partFeedback = q.parts.map((p, idx) => {
+        const expected = p.answer;
+        const userVal = partInputs[idx];
+        let correct = false;
+        if (typeof expected === 'number' && Number.isFinite(expected)){
+          const num = Number(userVal);
+          correct = Number.isFinite(num) && Math.abs(num - expected) < 1e-9;
+        } else {
+          correct = normalize(userVal) === normalize(expected);
+        }
+        if (correct) localScore += 1;
+        return `${String.fromCharCode(97+idx)}) ${correct ? '✓' : `✗ (ans: ${expected})`}`;
+      });
+
+      setScore(s => s + localScore);
+      setAsked(a => a + q.parts.length);
+      setFeedback(partFeedback.join('   '));
+      return;
+    }
+
+    correctAnswer = q.answer;
+    
+    if (typeof correctAnswer === 'number' && Number.isFinite(correctAnswer)) {
+      const val = Number(input);
+      if (!Number.isFinite(val)) { setFeedback('Please enter a number'); return; }
+      if (Math.abs(val - correctAnswer) < 1e-9){ 
+        setScore(s => s+1); 
+        setFeedback('Correct!');
+        setInput('');
+        setAsked(a => a+1);
+      } else {
+        setFeedback(`Wrong — answer: ${correctAnswer}`);
+        setAsked(a => a+1);
+      }
+      return;
+    }
+
+    const norm = (v) => String(v).replace(/\s/g,'').toLowerCase();
+    const user = norm(input);
+    const expected = norm(correctAnswer);
+    if (user === expected) {
+      setScore(s => s+1); 
+      setFeedback('Correct!');
+      setInput('');
+      setAsked(a => a+1);
+    } else {
+      setFeedback(`Wrong — answer: ${correctAnswer}`);
+      setAsked(a => a+1);
+    }
+  };
+
+  const nextQuestion = () => {
+    setFeedback('');
+    setInput('');
+    setQ(generateQuestion(topic));
+    setCurrentPart(0);
+  };
+
+  return (
+    <View style={styles.root}>
+      <Text style={styles.title}>Quiz</Text>
+      {q.table ? (
+        <>
+          <Text style={styles.routeTitle}>{q.table.route}</Text>
+          {q.expr && <Text style={styles.scenario}>{q.expr}</Text>}
+          <View style={styles.table}>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, styles.headerCell, {flex: 1}]}>
+                <Text style={styles.headerText}>Station</Text>
+              </View>
+              {q.table.allTimes.map((_, idx) => (
+                <View key={idx} style={[styles.tableCell, styles.headerCell, {flex: 1}]}>
+                  <Text style={styles.headerText}>Train {idx + 1}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, {flex: 1}]}>
+                <Text style={styles.cellText}>{q.table.stations[0]}</Text>
+              </View>
+              {q.table.allTimes.map((times, idx) => (
+                <View key={idx} style={[styles.tableCell, {flex: 1}]}>
+                  <Text style={styles.cellText}>{times[0]}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={styles.tableRow}>
+              <View style={[styles.tableCell, {flex: 1}]}>
+                <Text style={styles.cellText}>{q.table.stations[1]}</Text>
+              </View>
+              {q.table.allTimes.map((times, idx) => (
+                <View key={idx} style={[styles.tableCell, {flex: 1}]}>
+                  <Text style={styles.cellText}>{times[1]}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          {q.parts && q.parts.length > 0 && (
+            <>
+              {q.parts.map((p, idx) => (
+                <View key={idx} style={styles.partRow}>
+                  <Text style={styles.partLabel}>{String.fromCharCode(97+idx)})</Text>
+                  <Text style={[styles.question, {flex:1, marginVertical:6}]}>{p.question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
+                  <TextInput
+                    style={[styles.input, {width: '25%', marginLeft:8}]}
+                    value={partInputs[idx]}
+                    onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[idx]=t; return copy; })}
+                    keyboardType={typeof p.answer === 'number' ? 'numeric' : 'default'}
+                    placeholder='Answer'
+                  />
+                </View>
+              ))}
+            </>
+          )}
+        </>
+      ) : q.parts && q.parts.length > 0 ? (
+        <>
+          {q.expr && <Text style={styles.scenario}>{q.expr}</Text>}
+          {q.coords && <Grid points={q.coords} min={-5} max={5} width={300} height={300} />}
+          {q.parts.map((p, idx) => (
+            <View key={idx} style={styles.partRow}>
+              <Text style={styles.partLabel}>{String.fromCharCode(97+idx)})</Text>
+              <Text style={[styles.question, {flex:1, marginVertical:6}]}>{p.question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
+              <TextInput
+                style={[styles.input, {width: '25%', marginLeft:8}]}
+                value={partInputs[idx]}
+                onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[idx]=t; return copy; })}
+                keyboardType={typeof p.answer === 'number' ? 'numeric' : 'default'}
+                placeholder='Answer'
+              />
+            </View>
+          ))}
+        </>
+      ) : q.fraction || q.fractionList || q.fraction1 || q.targetFraction ? (
+        <View style={{alignItems: 'center', marginVertical: 15, width: '100%'}}>
+          {q.expr === 'Simplify' && (
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Text style={styles.question}>Simplify </Text>
+              <Fraction numerator={q.fraction.num} denominator={q.fraction.denom} size={18} />
+            </View>
+          )}
+          {q.expr === 'equivalent' && (
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Fraction numerator={q.fraction1.num} denominator={q.fraction1.denom} size={18} />
+              <Text style={styles.question}> = </Text>
+              <Fraction numerator={q.fraction2.num} denominator={q.fraction2.denom} size={18} />
+            </View>
+          )}
+          {q.expr === 'compare' && (
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Text style={styles.question}>Which is larger: </Text>
+              <Fraction numerator={q.fraction1.num} denominator={q.fraction1.denom} size={18} />
+              <Text style={styles.question}> or </Text>
+              <Fraction numerator={q.fraction2.num} denominator={q.fraction2.denom} size={18} />
+              <Text style={styles.question}>?</Text>
+            </View>
+          )}
+          {q.expr === 'non-equivalent' && q.targetFraction && (
+            <View style={{alignItems: 'center', width: '100%'}}>
+              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 10}}>
+                <Text style={styles.question}>One of these fractions is not equivalent to </Text>
+                <Fraction numerator={q.targetFraction.num} denominator={q.targetFraction.denom} size={16} />
+              </View>
+              <Text style={styles.question}>Write down this fraction.</Text>
+              <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 10}}>
+                {q.fractionList.map((f, idx) => (
+                  <View key={idx} style={{margin: 8}}>
+                    <Fraction numerator={f.num} denominator={f.denom} size={16} />
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          {q.expr === 'ordering' && (
+            <View style={{alignItems: 'center', width: '100%'}}>
+              <Text style={styles.question}>Write the following fractions in order of size.</Text>
+              <Text style={[styles.question, {fontSize: 14}]}>Start with the smallest fraction.</Text>
+              <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 10}}>
+                {q.fractionList.map((f, idx) => (
+                  <View key={idx} style={{margin: 8}}>
+                    <Fraction numerator={f.num} denominator={f.denom} size={16} />
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          {q.expr === 'closer-to' && (
+            <View style={{alignItems: 'center', width: '100%'}}>
+              <Text style={styles.question}>Work out which of the fractions is closer to {q.targetValue}</Text>
+              <View style={{flexDirection: 'row', justifyContent: 'center', marginTop: 10}}>
+                <View style={{margin: 8}}>
+                  <Fraction numerator={q.fraction1.num} denominator={q.fraction1.denom} size={18} />
+                </View>
+                <Text style={{fontSize: 18, marginHorizontal: 10}}>or</Text>
+                <View style={{margin: 8}}>
+                  <Fraction numerator={q.fraction2.num} denominator={q.fraction2.denom} size={18} />
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      ) : q.table && !q.parts ? (
+        <>
+          <Text style={styles.scenario}>{q.expr}</Text>
+          <View style={styles.table}>
+            <View style={styles.tableRow}>
+              {q.table.headers.map((header, idx) => (
+                <View key={idx} style={[styles.tableCell, styles.headerCell, {flex: 1}]}>
+                  <Text style={styles.headerText}>{header}</Text>
+                </View>
+              ))}
+            </View>
+            {q.table.rows.map((row, rowIdx) => (
+              <View key={rowIdx} style={styles.tableRow}>
+                {row.map((cell, cellIdx) => (
+                  <View key={cellIdx} style={[styles.tableCell, {flex: 1}]}>
+                    <Text style={styles.cellText}>{cell}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        <Text style={styles.question}>{q.expr}</Text>
+      )}
+      {! (q.parts && q.parts.length) && (
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          keyboardType={(typeof q.answer === 'number') ? 'numeric' : 'default'}
+          placeholder='Your answer'
+          editable={!feedback}
+        />
+      )}
+      {!feedback ? (
+        <TouchableOpacity style={styles.btn} onPress={submit}>
+          <Text style={styles.btnt}>Submit</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={styles.btn} onPress={nextQuestion}>
+          <Text style={styles.btnt}>Next Question</Text>
+        </TouchableOpacity>
+      )}
+      <Text style={styles.feedback}>{feedback}</Text>
+      <Text style={styles.stat}>Score: {score} / {asked}</Text>
+      <TouchableOpacity onPress={onBack} style={styles.link}><Text style={styles.linkt}>Back</Text></TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root:{alignItems:'center', paddingHorizontal:10, overflow:'visible'},
+  title:{fontSize:24,fontWeight:'700',marginBottom:10},
+  routeTitle:{fontSize:18,fontWeight:'600',marginTop:10,marginBottom:12,color:'#333'},
+  table:{marginVertical:16,borderWidth:2,borderColor:'#999',overflow:'visible'},
+  tableRow:{flexDirection:'row'},
+  tableCell:{borderRightWidth:2,borderBottomWidth:2,borderColor:'#999',padding:12,justifyContent:'center',alignItems:'center',minHeight:50},
+  headerCell:{backgroundColor:'#e8f0fe'},
+  headerText:{fontWeight:'700',fontSize:14,textAlign:'center'},
+  cellText:{fontSize:13,textAlign:'center',fontWeight:'500'},
+  scenario:{fontSize:14, marginVertical:10, lineHeight:22, textAlign:'left', width:'90%', color:'#444', fontWeight:'500'},
+  question:{fontSize:16, marginVertical:15, lineHeight:24, textAlign:'left', width:'90%'},
+  partIndicator:{fontSize:12, color:'#666', marginBottom:10},
+  input:{borderWidth:1,borderColor:'#ccc',width:'60%',padding:8,borderRadius:6,textAlign:'center'},
+  btn:{backgroundColor:'#28a745',padding:10,borderRadius:6,marginTop:10,width:'60%'},
+  btnt:{color:'#fff',textAlign:'center',fontWeight:'600'},
+  feedback:{marginTop:12,color:'#333'},
+  stat:{marginTop:8,color:'#666'},
+  link:{marginTop:20},
+  linkt:{color:'#007bff'},
+  partRow:{flexDirection:'row',alignItems:'center',width:'95%', marginBottom:8},
+  partLabel:{width:20, fontWeight:'700', textAlign:'right', marginRight:6}
+});

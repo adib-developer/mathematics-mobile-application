@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Maths Mobile App",
+    "slug": "maths-mobile-app",
+    "version": "1.0.0",
+    "sdkVersion": "48.0.0",
+    "platforms": ["ios", "android", "web"],
+    "entryPoint": "node_modules/expo/AppEntry.js",
+    "orientation": "portrait"
+  }
+}
