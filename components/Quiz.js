@@ -6,6 +6,74 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const timeNames = ['Alex','Sam','Jordan','Taylor','Casey','Avery','Robin','Charlie','Drew','Riley','Morgan','Quinn','Harper','Logan','Jamie'];
 const destinations = ['a friend\'s house','school','the shop','the park','the library','the cinema','swimming practice','football training','a cafe','the museum'];
 
+// Custom Tally Mark component with diagonal slash
+function TallyGroup({count}) {
+  if (count === 0) return null;
+  
+  // Calculate number of complete groups of 5 and remaining marks
+  const groups = Math.floor(count / 5);
+  const remainder = count % 5;
+  
+  // ADJUSTABLE DIAGONAL LINE POSITIONING
+  // Modify these values to change how the diagonal line stretches and positions
+  // fontSize: Controls size of the slash character (larger = longer diagonal line)
+  // top: Move line up/down (-8 = move 8 units up, 8 = move 8 units down)
+  // left: Move line left/right (-8 = move 8 units left, 8 = move 8 units right)
+  // bottom: Stretch line down from bottom (0 = no stretch, positive = stretches down)
+  // right: Stretch line right from right edge (0 = no stretch, positive = stretches right)
+  // EXAMPLE: To stretch corner-to-corner use: fontSize: 40, top: -8, left: -8, bottom: 0, right: 0
+  const slashConfig = {
+    fontSize: 6.9,           // Base font size
+    scaleX: 2,            // Horizontal stretch (increase to stretch wider)
+    scaleY: 2,            // Vertical stretch (increase to stretch taller)
+    rotateZ: 5,             // Rotation in degrees (optional)
+    offsetTop: 8.7,          // Vertical offset
+    offsetLeft: 10.75        // Horizontal offset
+  };
+  
+  return (
+    <View style={{flexDirection: 'row', alignItems: 'center', marginRight: 4}}>
+      {/* Render each group of 5 tally marks */}
+      {Array.from({length: groups}).map((_, idx) => (
+        <View key={`group-${idx}`} style={{position: 'relative', width: 28, height: 24, marginRight: 6, justifyContent: 'center'}}>
+          {/* Four vertical lines (the tally marks) */}
+          <View style={{flexDirection: 'row', justifyContent: 'center', position: 'absolute', width: '100%', height: '100%', alignItems: 'center'}}>
+            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: 1}}>|</Text>
+            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: 1}}>|</Text>
+            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: 1}}>|</Text>
+            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20}}>|</Text>
+          </View>
+          {/* Diagonal slash overlay - positioned on top of the vertical lines */}
+          <View style={{position: 'absolute', width: '100%', height: '100%'}}>
+            <Text style={{
+              fontSize: slashConfig.fontSize,
+              fontWeight: '700',
+              lineHeight: slashConfig.fontSize,
+              color: '#000',
+              position: 'absolute',
+              top: slashConfig.offsetTop,
+              left: slashConfig.offsetLeft,
+              transform: [
+                { scaleX: slashConfig.scaleX },
+                { scaleY: slashConfig.scaleY },
+                { rotateZ: `${slashConfig.rotateZ}deg` }
+              ]
+            }}>╱</Text>
+          </View>
+        </View>
+      ))}
+      {/* Render any remaining marks that don't make a complete group of 5 */}
+      {remainder > 0 && (
+        <View style={{flexDirection: 'row', marginLeft: 4}}>
+          {Array.from({length: remainder}).map((_, idx) => (
+            <Text key={`rem-${idx}`} style={{fontSize: 14, fontWeight: '600', marginRight: 2}}>|</Text>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Fraction display component
 function Fraction({numerator, denominator, size = 16}) {
   return (
@@ -598,21 +666,51 @@ function generateQuestion(topic){
       parts: parts
     };
   } else if(topic === 'pictograms'){
-    const types = ['read', 'complete'];
-    const t = types[Math.floor(Math.random()*types.length)];
-    
-    if(t === 'read'){
-      const key = Math.floor(Math.random()*3)+2;
-      const symbols = Math.floor(Math.random()*8)+3;
-      expr = `A pictogram key shows 1 symbol = ${key} items. There are ${symbols} symbols. How many items?`;
-      answer = key * symbols;
-    } else {
-      const key = Math.floor(Math.random()*3)+2;
-      const items = Math.floor(Math.random()*40)+10;
-      expr = `A pictogram key shows 1 symbol = ${key} items. How many symbols needed for ${items} items?`;
-      answer = items / key;
+    // Grade 1 • 1.13 pictogram/tally fault-finding: now includes a tally-only version matching the worksheet
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+    const trueCounts = [11,13,9,11,9];
+    const frequencies = [...trueCounts];
+
+    const wrongIdx = Math.floor(Math.random()*days.length);
+    frequencies[wrongIdx] = Math.max(1, frequencies[wrongIdx] + (Math.random()>0.5?1:-1));
+
+    const tallyTable = {
+      headers: ['Day','Tally','Frequency'],
+      rows: days.map((d,i)=>({day: d, tallyCount: trueCounts[i], frequency: frequencies[i]})),
+      isTally: true
+    };
+
+    const tableWithRoute = {route: 'Grade 1 • 1.13 Pictograms', ...tallyTable};
+    const tallyScenario = 'The tally chart shows information about the number of ice creams sold by a shop last week.';
+    const tallyPart = { question: 'Write down one thing that is wrong with the tally chart.', answer: `Row ${days[wrongIdx]} frequency does not match tally` };
+
+    const variant = Math.random() < 0.5 ? 'tally-only' : 'tally-and-pictogram';
+
+    if(variant === 'tally-only'){
+      return {expr: tallyScenario, answer: null, parts: [tallyPart], table: tableWithRoute};
     }
-    return {expr, answer, parts: null};
+
+    const keyVal = 3;
+    const pictogramRows = days.map((d,i)=>{
+      const symbolsNeeded = Math.max(1, Math.round(trueCounts[i] / keyVal));
+      return [d, symbolsNeeded];
+    });
+    const picWrongIdx = Math.floor(Math.random()*days.length);
+    pictogramRows[picWrongIdx][1] = Math.max(1, pictogramRows[picWrongIdx][1] + (Math.random()>0.5?1:-1));
+
+    const pictogramTable = {
+      key: keyVal,
+      headers: ['Day', `Symbols (key: 1 circle = ${keyVal} bars)`],
+      rows: pictogramRows
+    };
+
+    expr = 'The tally chart shows the number of ice creams sold by a shop last week. The pictogram shows the number of chocolate bars sold.';
+    const parts = [
+      tallyPart,
+      { question: 'Write down one thing that is wrong with the pictogram.', answer: `Row ${days[picWrongIdx]} symbols do not match the key` }
+    ];
+
+    return {expr, answer: null, parts, table: tableWithRoute, extraTable: pictogramTable};
   } else {
     const ops = ['+','-','*'];
     op = ops[Math.floor(Math.random()*ops.length)];
@@ -706,10 +804,24 @@ export default function Quiz({onBack, topic}){
     setCurrentPart(0);
   };
 
+  const renderSymbols = (count, keyVal = 1) => {
+    return (
+      <View style={{flexDirection:'row', flexWrap:'wrap'}}>
+        {Array.from({length: count}).map((_, i)=>(
+          <View key={i} style={{width:20,height:20,borderRadius:10,borderWidth:1,borderColor:'#000',marginRight:4,marginBottom:4,alignItems:'center',justifyContent:'center'}}>
+            <Text style={{fontSize:10}}>{keyVal}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const isTimetable = q.table && q.table.allTimes;
+
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Quiz</Text>
-      {q.table ? (
+      {isTimetable ? (
         <>
           <Text style={styles.routeTitle}>{q.table.route}</Text>
           {q.expr && <Text style={styles.scenario}>{q.expr}</Text>}
@@ -747,12 +859,13 @@ export default function Quiz({onBack, topic}){
           </View>
           {q.parts && q.parts.length > 0 && (
             <>
+              <Text style={styles.partIndicator}>Answer the parts below:</Text>
               {q.parts.map((p, idx) => (
                 <View key={idx} style={styles.partRow}>
                   <Text style={styles.partLabel}>{String.fromCharCode(97+idx)})</Text>
                   <Text style={[styles.question, {flex:1, marginVertical:6}]}>{p.question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
                   <TextInput
-                    style={[styles.input, {width: '25%', marginLeft:8}]}
+                    style={[styles.input, {width: '35%', marginLeft:8}]}
                     value={partInputs[idx]}
                     onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[idx]=t; return copy; })}
                     keyboardType={typeof p.answer === 'number' ? 'numeric' : 'default'}
@@ -760,6 +873,94 @@ export default function Quiz({onBack, topic}){
                   />
                 </View>
               ))}
+            </>
+          )}
+        </>
+      ) : q.table ? (
+        <>
+          {q.table.route && <Text style={styles.routeTitle}>{q.table.route}</Text>}
+          {q.expr && <Text style={styles.scenario}>{q.expr}</Text>}
+          <View style={styles.table}>
+            {q.table.headers && (
+              <View style={styles.tableRow}>
+                {q.table.headers.map((header, idx) => {
+                  // Ensure header column widths match body column widths for symmetry
+                  const flexVal = q.table.isTally
+                    ? ([1, 1.5, 1][idx] || 1)
+                    : 1;
+                  return (
+                    <View key={idx} style={[styles.tableCell, styles.headerCell, {flex: flexVal}]}> 
+                      <Text style={styles.headerText}>{header}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            {q.table.rows && q.table.rows.map((row, rowIdx) => (
+              <View key={rowIdx} style={styles.tableRow}>
+                {q.table.isTally ? (
+                  <>
+                    <View style={[styles.tableCell, {flex: 1}]}>
+                      <Text style={styles.cellText}>{row.day}</Text>
+                    </View>
+                    <View style={[styles.tableCell, {flex: 1.5}]}>
+                      <TallyGroup count={row.tallyCount} />
+                    </View>
+                    <View style={[styles.tableCell, {flex: 1}]}>
+                      <Text style={styles.cellText}>{row.frequency}</Text>
+                    </View>
+                  </>
+                ) : (
+                  row.map((cell, cellIdx) => (
+                    <View key={cellIdx} style={[styles.tableCell, {flex: 1}]}> 
+                      <Text style={styles.cellText}>{cell}</Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            ))}
+          </View>
+          {q.parts && q.parts.length > 0 && (
+            <>
+              <Text style={styles.partIndicator}>Answer the parts below:</Text>
+              {q.parts.map((p, idx) => (
+                <View key={idx} style={styles.partRow}>
+                  <Text style={styles.partLabel}>{String.fromCharCode(97+idx)})</Text>
+                  <Text style={[styles.question, {flex:1, marginVertical:6}]}>{p.question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
+                  <TextInput
+                    style={[styles.input, {width: '35%', marginLeft:8}]}
+                    value={partInputs[idx]}
+                    onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[idx]=t; return copy; })}
+                    keyboardType={typeof p.answer === 'number' ? 'numeric' : 'default'}
+                    placeholder='Answer'
+                  />
+                </View>
+              ))}
+            </>
+          )}
+          {q.extraTable && (
+            <>
+              <Text style={[styles.scenario, {marginTop:8}]}>Pictogram (key below)</Text>
+              <View style={styles.table}>
+                <View style={styles.tableRow}>
+                  {q.extraTable.headers.map((header, idx) => (
+                    <View key={idx} style={[styles.tableCell, styles.headerCell, {flex: idx === 0 ? 1 : 2}]}> 
+                      <Text style={styles.headerText}>{header}</Text>
+                    </View>
+                  ))}
+                </View>
+                {q.extraTable.rows.map((row, rowIdx) => (
+                  <View key={rowIdx} style={styles.tableRow}>
+                    <View style={[styles.tableCell, {flex:1}]}> 
+                      <Text style={styles.cellText}>{row[0]}</Text>
+                    </View>
+                    <View style={[styles.tableCell, {flex:2}]}> 
+                      {renderSymbols(row[1], q.extraTable.key)}
+                    </View>
+                  </View>
+                ))}
+              </View>
+              <Text style={{marginTop:6, marginBottom:12, color:'#555'}}>Key: 1 symbol = {q.extraTable.key} items</Text>
             </>
           )}
         </>
@@ -904,12 +1105,12 @@ const styles = StyleSheet.create({
   root:{alignItems:'center', paddingHorizontal:10, overflow:'visible'},
   title:{fontSize:24,fontWeight:'700',marginBottom:10},
   routeTitle:{fontSize:18,fontWeight:'600',marginTop:10,marginBottom:12,color:'#333'},
-  table:{marginVertical:16,borderWidth:2,borderColor:'#999',overflow:'visible'},
-  tableRow:{flexDirection:'row'},
-  tableCell:{borderRightWidth:2,borderBottomWidth:2,borderColor:'#999',padding:12,justifyContent:'center',alignItems:'center',minHeight:50},
+  table:{marginVertical:16,borderWidth:2,borderColor:'#999',overflow:'visible',minWidth:'50%',maxWidth:'50%'}, 
+  tableRow:{flexDirection:'row',width:'100%'},
+  tableCell:{borderRightWidth:2,borderBottomWidth:2,borderColor:'#999',padding:16,justifyContent:'center',alignItems:'center',minHeight:60},
   headerCell:{backgroundColor:'#e8f0fe'},
-  headerText:{fontWeight:'700',fontSize:14,textAlign:'center'},
-  cellText:{fontSize:13,textAlign:'center',fontWeight:'500'},
+  headerText:{fontWeight:'700',fontSize:16,textAlign:'center'},
+  cellText:{fontSize:15,textAlign:'center',fontWeight:'500'},
   scenario:{fontSize:14, marginVertical:10, lineHeight:22, textAlign:'left', width:'90%', color:'#444', fontWeight:'500'},
   question:{fontSize:16, marginVertical:15, lineHeight:24, textAlign:'left', width:'90%'},
   partIndicator:{fontSize:12, color:'#666', marginBottom:10},

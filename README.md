@@ -22,6 +22,7 @@ Files
 - `components/Quiz.js` — quick arithmetic quiz
 - `components/Practice.js` — practice operations
 - `components/Calculator.js` — small calculator
+ - `components/Pictogram.js` — pictogram and tally chart example with tables
 
 Next steps
 - Add persistent progress tracking

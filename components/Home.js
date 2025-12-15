@@ -62,7 +62,10 @@ export default function Home({onNavigate}){
               {topics.map(t => (
                 <View key={t.topic} style={styles.topicBox}>
                   <Text style={styles.topicTitle}>{t.title}</Text>
-                  <TouchableOpacity style={styles.smallBtn} onPress={() => onNavigate('quiz', {topic: t.topic})}>
+                  <TouchableOpacity
+                    style={styles.smallBtn}
+                    onPress={() => onNavigate('quiz', { topic: t.topic })}
+                  >
                     <Text style={styles.smallBtnText}>Start Quiz</Text>
                   </TouchableOpacity>
                 </View>
