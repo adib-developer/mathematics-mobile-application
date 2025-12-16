@@ -23,25 +23,25 @@ function TallyGroup({count}) {
   // right: Stretch line right from right edge (0 = no stretch, positive = stretches right)
   // EXAMPLE: To stretch corner-to-corner use: fontSize: 40, top: -8, left: -8, bottom: 0, right: 0
   const slashConfig = {
-    fontSize: 6.9,           // Base font size
-    scaleX: 2,            // Horizontal stretch (increase to stretch wider)
-    scaleY: 2,            // Vertical stretch (increase to stretch taller)
-    rotateZ: 5,             // Rotation in degrees (optional)
-    offsetTop: 8.7,          // Vertical offset
-    offsetLeft: 10.75        // Horizontal offset
+    fontSize: 10,           // Base font size (slash)
+    scaleX: 2.2,            // Horizontal stretch (increase to stretch wider)
+    scaleY: 1.8,            // Vertical stretch (increase to stretch taller)
+    rotateZ: 8,             // Rotation in degrees (optional)
+    offsetTop: 10,          // Vertical offset
+    offsetLeft: 13          // Horizontal offset
   };
   
   return (
     <View style={{flexDirection: 'row', alignItems: 'center', marginRight: 4}}>
       {/* Render each group of 5 tally marks */}
       {Array.from({length: groups}).map((_, idx) => (
-        <View key={`group-${idx}`} style={{position: 'relative', width: 28, height: 24, marginRight: 6, justifyContent: 'center'}}>
+        <View key={`group-${idx}`} style={{position: 'relative', width: 34, height: 30, marginRight: 8, justifyContent: 'center'}}>
           {/* Four vertical lines (the tally marks) */}
-          <View style={{flexDirection: 'row', justifyContent: 'center', position: 'absolute', width: '100%', height: '100%', alignItems: 'center'}}>
-            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: 1}}>|</Text>
-            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: 1}}>|</Text>
-            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20, marginRight: 1}}>|</Text>
-            <Text style={{fontSize: 14, fontWeight: '600', lineHeight: 20}}>|</Text>
+          <View style={{flexDirection: 'row', justifyContent: 'flex-start', position: 'absolute', width: '100%', height: '100%', alignItems: 'center'}}>
+            <Text style={{fontSize: 18, fontWeight: '700', lineHeight: 24, marginRight: 2}}>|</Text>
+            <Text style={{fontSize: 18, fontWeight: '700', lineHeight: 24, marginRight: 2}}>|</Text>
+            <Text style={{fontSize: 18, fontWeight: '700', lineHeight: 24, marginRight: 2}}>|</Text>
+            <Text style={{fontSize: 18, fontWeight: '700', lineHeight: 24}}>|</Text>
           </View>
           {/* Diagonal slash overlay - positioned on top of the vertical lines */}
           <View style={{position: 'absolute', width: '100%', height: '100%'}}>
@@ -64,9 +64,9 @@ function TallyGroup({count}) {
       ))}
       {/* Render any remaining marks that don't make a complete group of 5 */}
       {remainder > 0 && (
-        <View style={{flexDirection: 'row', marginLeft: 4}}>
+        <View style={{flexDirection: 'row', marginLeft: 6}}>
           {Array.from({length: remainder}).map((_, idx) => (
-            <Text key={`rem-${idx}`} style={{fontSize: 14, fontWeight: '600', marginRight: 2}}>|</Text>
+            <Text key={`rem-${idx}`} style={{fontSize: 18, fontWeight: '700', marginRight: 3, lineHeight: 24}}>|</Text>
           ))}
         </View>
       )}
@@ -692,19 +692,19 @@ function generateQuestion(topic){
 
     const keyVal = 3;
     const pictogramRows = days.map((d,i)=>{
-      const symbolsNeeded = Math.max(1, Math.round(trueCounts[i] / keyVal));
-      return [d, symbolsNeeded];
+      const exactSymbols = trueCounts[i] / keyVal;
+      return [d, exactSymbols];
     });
     const picWrongIdx = Math.floor(Math.random()*days.length);
-    pictogramRows[picWrongIdx][1] = Math.max(1, pictogramRows[picWrongIdx][1] + (Math.random()>0.5?1:-1));
+    pictogramRows[picWrongIdx][1] = Math.max(0.33, pictogramRows[picWrongIdx][1] + (Math.random()>0.5?0.5:-0.5));
 
     const pictogramTable = {
       key: keyVal,
-      headers: ['Day', `Symbols (key: 1 circle = ${keyVal} bars)`],
+      headers: ['Day', 'Circle'],
       rows: pictogramRows
     };
 
-    expr = 'The tally chart shows the number of ice creams sold by a shop last week. The pictogram shows the number of chocolate bars sold.';
+    expr = 'The tally chart shows the number of ice creams sold by a shop last week.';
     const parts = [
       tallyPart,
       { question: 'Write down one thing that is wrong with the pictogram.', answer: `Row ${days[picWrongIdx]} symbols do not match the key` }
@@ -754,7 +754,40 @@ export default function Quiz({onBack, topic}){
           const num = Number(userVal);
           correct = Number.isFinite(num) && Math.abs(num - expected) < 1e-9;
         } else {
-          correct = normalize(userVal) === normalize(expected);
+          // Flexible text matching for descriptive answers
+          const normalizedUser = normalize(userVal);
+          const normalizedExpected = normalize(expected);
+          
+          // Check exact match first
+          if (normalizedUser === normalizedExpected) {
+            correct = true;
+          } else if (expected.toLowerCase().includes('does not match') || expected.toLowerCase().includes('wrong')) {
+            // For error-finding questions, check if answer contains key concepts
+            const userLower = userVal.toLowerCase();
+            const expectedLower = expected.toLowerCase();
+            
+            // Extract the day name from expected answer
+            const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+            const expectedDay = days.find(d => expectedLower.includes(d));
+            
+            // Check if user mentioned the correct day and the concept of mismatch
+            if (expectedDay && userLower.includes(expectedDay)) {
+              const hasMismatchConcept = userLower.includes('match') || 
+                                        userLower.includes('wrong') || 
+                                        userLower.includes('incorrect') ||
+                                        userLower.includes('differ') ||
+                                        userLower.includes('not');
+              const hasFrequency = userLower.includes('frequency') || userLower.includes('freq');
+              const hasTally = userLower.includes('tally') || userLower.includes('talli');
+              
+              if (hasMismatchConcept && (hasFrequency || hasTally)) {
+                correct = true;
+              }
+            }
+          } else {
+            // Default exact normalized match
+            correct = normalizedUser === normalizedExpected;
+          }
         }
         if (correct) localScore += 1;
         return `${String.fromCharCode(97+idx)}) ${correct ? '✓' : `✗ (ans: ${expected})`}`;
@@ -805,13 +838,53 @@ export default function Quiz({onBack, topic}){
   };
 
   const renderSymbols = (count, keyVal = 1) => {
+    const fullCount = Math.floor(count);
+    const decimal = count - fullCount;
+    
+    const items = [];
+    
+    const D = 30;  // diameter
+    const R = 15;  // radius
+    const B = 1.8; // border width
+    const M = 7;   // margin
+
+    // Draw full circles
+    for(let i = 0; i < fullCount; i++){
+      items.push(
+        <View key={`full-${i}`} style={{width:D, height:D, marginRight:M, position:'relative'}}>
+          <View style={{width:D, height:D, borderRadius:R, borderWidth:B, borderColor:'#000'}}/>
+          <View style={{position:'absolute', left:R-(B/2), top:0, width:B, height:D, backgroundColor:'#000'}}/>
+        </View>
+      );
+    }
+
+    // Draw partial circle - all fractional values render as half circles
+    if(decimal > 0.15){
+      // Half circle with vertical line on right edge
+      items.push(
+        <View 
+          key="partial" 
+          style={{
+            width: R,
+            height: D,
+            marginRight: M,
+            overflow: 'hidden',
+            borderRightWidth: B,
+            borderRightColor: '#000'
+          }}
+        >
+          <View style={{width:D, height:D, borderRadius:R, borderWidth:B, borderColor:'#000'}}/>
+        </View>
+      );
+    }
+
     return (
-      <View style={{flexDirection:'row', flexWrap:'wrap'}}>
-        {Array.from({length: count}).map((_, i)=>(
-          <View key={i} style={{width:20,height:20,borderRadius:10,borderWidth:1,borderColor:'#000',marginRight:4,marginBottom:4,alignItems:'center',justifyContent:'center'}}>
-            <Text style={{fontSize:10}}>{keyVal}</Text>
-          </View>
-        ))}
+      <View style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'center'
+      }}>
+        {items}
       </View>
     );
   };
@@ -903,7 +976,7 @@ export default function Quiz({onBack, topic}){
                     <View style={[styles.tableCell, {flex: 1}]}>
                       <Text style={styles.cellText}>{row.day}</Text>
                     </View>
-                    <View style={[styles.tableCell, {flex: 1.5}]}>
+                    <View style={[styles.tableCell, {flex: 1.5, alignItems: 'flex-start'}]}>
                       <TallyGroup count={row.tallyCount} />
                     </View>
                     <View style={[styles.tableCell, {flex: 1}]}>
@@ -920,47 +993,80 @@ export default function Quiz({onBack, topic}){
               </View>
             ))}
           </View>
-          {q.parts && q.parts.length > 0 && (
-            <>
-              <Text style={styles.partIndicator}>Answer the parts below:</Text>
-              {q.parts.map((p, idx) => (
-                <View key={idx} style={styles.partRow}>
-                  <Text style={styles.partLabel}>{String.fromCharCode(97+idx)})</Text>
-                  <Text style={[styles.question, {flex:1, marginVertical:6}]}>{p.question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
-                  <TextInput
-                    style={[styles.input, {width: '35%', marginLeft:8}]}
-                    value={partInputs[idx]}
-                    onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[idx]=t; return copy; })}
-                    keyboardType={typeof p.answer === 'number' ? 'numeric' : 'default'}
-                    placeholder='Answer'
-                  />
-                </View>
-              ))}
-            </>
+          {/* Part (a) directly below the tally table */}
+          {q.table.isTally && q.parts && q.parts.length > 0 && (
+            <View style={{width:'95%'}}>
+              <Text style={styles.partIndicator}>Answer the part below:</Text>
+              <View style={styles.partRow}>
+                <Text style={styles.partLabel}>a)</Text>
+                <Text style={[styles.question, {flex:1, marginVertical:6}]}>{q.parts[0].question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
+                <TextInput
+                  style={[styles.input, {width: '35%', marginLeft:8}]}
+                  value={partInputs[0]}
+                  onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[0]=t; return copy; })}
+                  keyboardType={typeof q.parts[0].answer === 'number' ? 'numeric' : 'default'}
+                  placeholder='Answer'
+                />
+              </View>
+            </View>
           )}
           {q.extraTable && (
             <>
-              <Text style={[styles.scenario, {marginTop:8}]}>Pictogram (key below)</Text>
-              <View style={styles.table}>
-                <View style={styles.tableRow}>
-                  {q.extraTable.headers.map((header, idx) => (
-                    <View key={idx} style={[styles.tableCell, styles.headerCell, {flex: idx === 0 ? 1 : 2}]}> 
-                      <Text style={styles.headerText}>{header}</Text>
+              <Text style={[styles.scenario, {marginTop:70}]}>The pictogram shows the number of chocolate bars sold.</Text>
+              <View style={{flexDirection:'row', width:'100%', alignItems:'flex-start', justifyContent:'center', marginTop:12}}>
+                <View style={{width:100}}></View>
+                <View style={styles.table}>
+                  <View style={styles.tableRow}>
+                    {q.extraTable.headers.map((header, idx) => (
+                      <View key={idx} style={[styles.tableCell, styles.headerCell, {flex: idx === 0 ? 1 : 2}]}> 
+                        <Text style={styles.headerText}>{header}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {q.extraTable.rows.map((row, rowIdx) => (
+                    <View key={rowIdx} style={styles.tableRow}>
+                      <View style={[styles.tableCell, {flex:1}]}> 
+                        <Text style={styles.cellText}>{row[0]}</Text>
+                      </View>
+                      <View style={[styles.tableCell, {flex:2}]}> 
+                        {renderSymbols(row[1], q.extraTable.key)}
+                      </View>
                     </View>
                   ))}
                 </View>
-                {q.extraTable.rows.map((row, rowIdx) => (
-                  <View key={rowIdx} style={styles.tableRow}>
-                    <View style={[styles.tableCell, {flex:1}]}> 
-                      <Text style={styles.cellText}>{row[0]}</Text>
-                    </View>
-                    <View style={[styles.tableCell, {flex:2}]}> 
-                      {renderSymbols(row[1], q.extraTable.key)}
+                <View style={{width:200, paddingLeft:40, paddingTop:70}}>
+                  <View style={{borderWidth:1.5, borderColor:'#666', backgroundColor:'#e8f0ff', padding:10}}>
+                    <View style={{flexDirection:'row', alignItems:'center'}}>
+                      <View style={{position:'relative', width:32, height:32, marginRight:12}}>
+                        <View style={{width:32, height:32, borderRadius:16, borderWidth:1.5, borderColor:'#000'}}></View>
+                        <View style={{position:'absolute', left:15.25, top:0, width:1.5, height:32, backgroundColor:'#000'}}></View>
+                      </View>
+                      <View style={{flex:1}}>
+                        <Text style={{fontSize:14, fontWeight:'bold', color:'#333', marginBottom:4}}>Key:</Text>
+                        <Text style={{fontSize:13, color:'#333', lineHeight:18}}>Represents {q.extraTable.key}{'\n'}chocolate bars</Text>
+                      </View>
                     </View>
                   </View>
-                ))}
+                </View>
               </View>
-              <Text style={{marginTop:6, marginBottom:12, color:'#555'}}>Key: 1 symbol = {q.extraTable.key} items</Text>
+              {q.parts && q.parts.length > 1 && (
+                <View style={{width:'95%'}}>
+                  <Text style={styles.partIndicator}>Answer the parts below:</Text>
+                  {q.parts.slice(1).map((p, idx) => (
+                    <View key={idx+1} style={styles.partRow}>
+                      <Text style={styles.partLabel}>{String.fromCharCode(98+idx)})</Text>
+                      <Text style={[styles.question, {flex:1, marginVertical:6}]}>{p.question.replace(/^\(.[^)]+\)\s*/,'')}</Text>
+                      <TextInput
+                        style={[styles.input, {width: '35%', marginLeft:8}]}
+                        value={partInputs[idx+1]}
+                        onChangeText={(t)=> setPartInputs((arr)=>{ const copy=[...arr]; copy[idx+1]=t; return copy; })}
+                        keyboardType={typeof p.answer === 'number' ? 'numeric' : 'default'}
+                        placeholder='Answer'
+                      />
+                    </View>
+                  ))}
+                </View>
+              )}
             </>
           )}
         </>
@@ -1105,15 +1211,15 @@ const styles = StyleSheet.create({
   root:{alignItems:'center', paddingHorizontal:10, overflow:'visible'},
   title:{fontSize:24,fontWeight:'700',marginBottom:10},
   routeTitle:{fontSize:18,fontWeight:'600',marginTop:10,marginBottom:12,color:'#333'},
-  table:{marginVertical:16,borderWidth:2,borderColor:'#999',overflow:'visible',minWidth:'50%',maxWidth:'50%'}, 
+  table:{marginVertical:16,borderWidth:2,borderColor:'#999',overflow:'visible',minWidth:'40%',maxWidth:'40%'}, 
   tableRow:{flexDirection:'row',width:'100%'},
-  tableCell:{borderRightWidth:2,borderBottomWidth:2,borderColor:'#999',padding:16,justifyContent:'center',alignItems:'center',minHeight:60},
+  tableCell:{borderRightWidth:2,borderBottomWidth:2,borderColor:'#999',padding:18,justifyContent:'center',alignItems:'center',minHeight:68},
   headerCell:{backgroundColor:'#e8f0fe'},
-  headerText:{fontWeight:'700',fontSize:16,textAlign:'center'},
-  cellText:{fontSize:15,textAlign:'center',fontWeight:'500'},
-  scenario:{fontSize:14, marginVertical:10, lineHeight:22, textAlign:'left', width:'90%', color:'#444', fontWeight:'500'},
-  question:{fontSize:16, marginVertical:15, lineHeight:24, textAlign:'left', width:'90%'},
-  partIndicator:{fontSize:12, color:'#666', marginBottom:10},
+  headerText:{fontWeight:'700',fontSize:18,textAlign:'center'},
+  cellText:{fontSize:17,textAlign:'center',fontWeight:'500'},
+  scenario:{fontSize:16, marginVertical:10, lineHeight:24, textAlign:'left', width:'90%', color:'#444', fontWeight:'500'},
+  question:{fontSize:18, marginVertical:15, lineHeight:26, textAlign:'left', width:'90%'},
+  partIndicator:{fontSize:12, color:'#666', marginBottom:10, textAlign:'left'},
   input:{borderWidth:1,borderColor:'#ccc',width:'60%',padding:8,borderRadius:6,textAlign:'center'},
   btn:{backgroundColor:'#28a745',padding:10,borderRadius:6,marginTop:10,width:'60%'},
   btnt:{color:'#fff',textAlign:'center',fontWeight:'600'},
