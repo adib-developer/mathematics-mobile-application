@@ -1,5 +1,5 @@
-import React, {useState, useEffect} from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import React, {useState, useEffect, useRef} from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, PanResponder, Animated } from 'react-native';
 import Grid from './Grid';
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -24,11 +24,11 @@ function TallyGroup({count}) {
   // EXAMPLE: To stretch corner-to-corner use: fontSize: 40, top: -8, left: -8, bottom: 0, right: 0
   const slashConfig = {
     fontSize: 10,           // Base font size (slash)
-    scaleX: 2.2,            // Horizontal stretch (increase to stretch wider)
-    scaleY: 1.8,            // Vertical stretch (increase to stretch taller)
-    rotateZ: 8,             // Rotation in degrees (optional)
+    scaleX: 2.8,            // Horizontal stretch (increase to stretch wider)
+    scaleY: 2,            // Vertical stretch (increase to stretch taller)
+    rotateZ: 12,             // Rotation in degrees (optional)
     offsetTop: 10,          // Vertical offset
-    offsetLeft: 13          // Horizontal offset
+    offsetLeft: 10.5          // Horizontal offset
   };
   
   return (
@@ -666,7 +666,7 @@ function generateQuestion(topic){
       parts: parts
     };
   } else if(topic === 'pictograms'){
-    // Grade 1 • 1.13 pictogram/tally fault-finding: now includes a tally-only version matching the worksheet
+    // Grade 1 • 1.13 pictogram/tally questions
     const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
     const trueCounts = [11,13,9,11,9];
     const frequencies = [...trueCounts];
@@ -684,19 +684,66 @@ function generateQuestion(topic){
     const tallyScenario = 'The tally chart shows information about the number of ice creams sold by a shop last week.';
     const tallyPart = { question: 'Write down one thing that is wrong with the tally chart.', answer: `Row ${days[wrongIdx]} frequency does not match tally` };
 
-    const variant = Math.random() < 0.5 ? 'tally-only' : 'tally-and-pictogram';
+    const variant = Math.random() < 0.33 ? 'tally-only' : (Math.random() < 0.5 ? 'tally-and-pictogram' : 'completion');
 
     if(variant === 'tally-only'){
       return {expr: tallyScenario, answer: null, parts: [tallyPart], table: tableWithRoute};
+    } else if(variant === 'completion'){
+      // Completion question - fill in missing tally and pictogram data
+      const completionDays = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+      const completionCounts = [6, 9, 7, 7, 11];
+      
+      // Create incomplete tally table with some missing frequencies and one missing tally
+      const incompleteTallyRows = completionDays.map((d,i)=>{
+        if(i === 0) return {day: d, tallyCount: completionCounts[i], frequency: completionCounts[i]}; // Monday complete
+        if(i === 4) return {day: d, tallyCount: null, frequency: completionCounts[i]}; // Friday missing tally
+        return {day: d, tallyCount: completionCounts[i], frequency: null}; // Others missing frequency
+      });
+      
+      const incompleteTallyTable = {
+        headers: ['Day','Tally','Frequency'],
+        rows: incompleteTallyRows,
+        isTally: true,
+        isCompletion: true
+      };
+      
+      const tableWithRouteCompletion = {route: 'Grade 1 • 1.13 Pictograms', ...incompleteTallyTable};
+      
+      // Create incomplete pictogram (only Monday filled)
+      const keyValComp = 2;
+      const incompletePictogramRows = completionDays.map((d,i)=>{
+        if(i === 0) return [d, completionCounts[i] / keyValComp]; // Monday: 3 circles
+        return [d, null]; // Others empty
+      });
+      
+      const incompletePictogramTable = {
+        key: keyValComp,
+        headers: ['Day', 'Circle'],
+        rows: incompletePictogramRows,
+        isIncomplete: true
+      };
+      
+      const completionExpr = 'The incomplete table show information about the number of ice creams sold by a shop last week.';
+      const completionParts = [
+        { question: 'Complete the tally chart.', answer: 'Tuesday=9,Wednesday=7,Thursday=7,Friday=11tally' },
+        { question: 'Complete the pictogram to represent the ice cream sales', answer: 'Tuesday=4.5,Wednesday=3.5,Thursday=3.5,Friday=5.5' }
+      ];
+      
+      return {expr: completionExpr, answer: null, parts: completionParts, table: tableWithRouteCompletion, extraTable: incompletePictogramTable};
     }
 
     const keyVal = 3;
-    const pictogramRows = days.map((d,i)=>{
-      const exactSymbols = trueCounts[i] / keyVal;
-      return [d, exactSymbols];
-    });
     const picWrongIdx = Math.floor(Math.random()*days.length);
-    pictogramRows[picWrongIdx][1] = Math.max(0.33, pictogramRows[picWrongIdx][1] + (Math.random()>0.5?0.5:-0.5));
+    const pictogramRows = days.map((d,i)=>{
+      if(i === picWrongIdx) {
+        // Error day: intentionally wrong - show half circle (0.5 off from correct)
+        const correctCount = Math.round(trueCounts[i] / keyVal);
+        return [d, correctCount + 0.5];
+      } else {
+        // Correct days: round to whole numbers
+        return [d, Math.round(trueCounts[i] / keyVal)];
+      }
+    });
 
     const pictogramTable = {
       key: keyVal,
@@ -728,6 +775,20 @@ export default function Quiz({onBack, topic}){
   const [asked, setAsked] = useState(0);
   const [feedback, setFeedback] = useState('');
   const [currentPart, setCurrentPart] = useState(0);
+  
+  // Drag and drop state for completion questions
+  const [draggedTally, setDraggedTally] = useState(null);
+  const [droppedTallies, setDroppedTallies] = useState({}); // Now stores array of tally values
+  const [frequencyInputs, setFrequencyInputs] = useState({});
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPosition, setDragPosition] = useState({x: 0, y: 0});
+  const [dropTargets, setDropTargets] = useState({});
+  const [dragFromCell, setDragFromCell] = useState(null); // {day: 'Friday', index: 0}
+  const [draggedCircle, setDraggedCircle] = useState(null); // For pictogram circles
+  const [droppedCircles, setDroppedCircles] = useState({}); // Circles dropped in pictogram
+  const [circleDropTargets, setCircleDropTargets] = useState({});
+  const [dragFromCircleCell, setDragFromCircleCell] = useState(null);
+  const panValue = useRef(new Animated.ValueXY()).current;
 
   useEffect(()=>{ 
     setFeedback(''); 
@@ -737,11 +798,201 @@ export default function Quiz({onBack, topic}){
     } else {
       setPartInputs([]);
     }
+    // Reset drag-and-drop state
+    setDraggedTally(null);
+    setDroppedTallies({});
+    setFrequencyInputs({});
+    setIsDragging(false);
+    setDropTargets({});
+    setDraggedCircle(null);
+    setDroppedCircles({});
+    setCircleDropTargets({});
+    setDragFromCircleCell(null);
+    panValue.setValue({x: 0, y: 0});
   },[q]);
+
+  // Global drag handlers for both tallies and circles
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleGlobalMouseMove = (e) => {
+      e.preventDefault();
+      setDragPosition({x: e.clientX, y: e.clientY});
+    };
+
+    const handleGlobalMouseUp = (e) => {
+      e.preventDefault();
+      const dropX = e.clientX;
+      const dropY = e.clientY;
+
+      // Handle tally drops
+      if (draggedTally !== null) {
+        Object.keys(dropTargets).forEach(day => {
+          const target = dropTargets[day];
+          if (target && 
+              dropX >= target.x && 
+              dropX <= target.x + target.width &&
+              dropY >= target.y && 
+              dropY <= target.y + target.height) {
+            setDroppedTallies(prev => ({
+              ...prev, 
+              [day]: [...(prev[day] || []), draggedTally]
+            }));
+          }
+        });
+        setDraggedTally(null);
+      }
+      // Handle circle drops
+      else if (draggedCircle !== null) {
+        Object.keys(circleDropTargets).forEach(day => {
+          const target = circleDropTargets[day];
+          if (target && 
+              dropX >= target.x && 
+              dropX <= target.x + target.width &&
+              dropY >= target.y && 
+              dropY <= target.y + target.height) {
+            setDroppedCircles(prev => ({
+              ...prev, 
+              [day]: [...(prev[day] || []), draggedCircle]
+            }));
+          }
+        });
+        setDraggedCircle(null);
+      }
+      // Handle dragging tally from cell
+      else if (dragFromCell) {
+        const removalZone = window.removalZone;
+        let droppedOnRemoval = false;
+        
+        if (removalZone &&
+            dropX >= removalZone.x && 
+            dropX <= removalZone.x + removalZone.width &&
+            dropY >= removalZone.y && 
+            dropY <= removalZone.y + removalZone.height) {
+          droppedOnRemoval = true;
+        }
+        
+        let droppedOnTarget = false;
+        Object.keys(dropTargets).forEach(day => {
+          const target = dropTargets[day];
+          if (target && 
+              dropX >= target.x && 
+              dropX <= target.x + target.width &&
+              dropY >= target.y && 
+              dropY <= target.y + target.height) {
+            droppedOnTarget = true;
+          }
+        });
+        
+        if (droppedOnRemoval || !droppedOnTarget) {
+          setDroppedTallies(prev => {
+            const updated = {...prev};
+            const tallies = updated[dragFromCell.day] || [];
+            tallies.splice(dragFromCell.index, 1);
+            if (tallies.length === 0) {
+              delete updated[dragFromCell.day];
+            } else {
+              updated[dragFromCell.day] = tallies;
+            }
+            return updated;
+          });
+        }
+        setDragFromCell(null);
+      }
+      // Handle dragging circle from cell
+      else if (dragFromCircleCell) {
+        const removalZone = window.removalZone;
+        let droppedOnRemoval = false;
+        
+        if (removalZone &&
+            dropX >= removalZone.x && 
+            dropX <= removalZone.x + removalZone.width &&
+            dropY >= removalZone.y && 
+            dropY <= removalZone.y + removalZone.height) {
+          droppedOnRemoval = true;
+        }
+        
+        let droppedOnTarget = false;
+        Object.keys(circleDropTargets).forEach(day => {
+          const target = circleDropTargets[day];
+          if (target && 
+              dropX >= target.x && 
+              dropX <= target.x + target.width &&
+              dropY >= target.y && 
+              dropY <= target.y + target.height) {
+            droppedOnTarget = true;
+          }
+        });
+        
+        if (droppedOnRemoval || !droppedOnTarget) {
+          setDroppedCircles(prev => {
+            const updated = {...prev};
+            const circles = updated[dragFromCircleCell.day] || [];
+            circles.splice(dragFromCircleCell.index, 1);
+            if (circles.length === 0) {
+              delete updated[dragFromCircleCell.day];
+            } else {
+              updated[dragFromCircleCell.day] = circles;
+            }
+            return updated;
+          });
+        }
+        setDragFromCircleCell(null);
+      }
+
+      setIsDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isDragging, draggedTally, draggedCircle, dragFromCell, dragFromCircleCell, dropTargets, circleDropTargets]);
 
   const submit = () => {
     let correctAnswer;
     const hasParts = q.parts && q.parts.length > 0;
+    const isCompletion = q.table && q.table.isCompletion;
+    
+    // Handle completion questions separately
+    if(isCompletion){
+      let allCorrect = true;
+      const errors = [];
+      
+      // Check dropped tallies and frequency inputs
+      const completionDays = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+      const completionCounts = [6, 9, 7, 7, 11];
+      
+      completionDays.forEach((day, i) => {
+        if(i === 4){ // Friday - check tally (sum of all dropped tallies)
+          const tallySum = (droppedTallies[day] || []).reduce((sum, val) => sum + val, 0);
+          if(tallySum !== completionCounts[i]){
+            allCorrect = false;
+            errors.push(`${day} tally should total ${completionCounts[i]} (you have ${tallySum})`);
+          }
+        } else if(i > 0){ // Tuesday-Thursday - check frequency
+          const userFreq = parseInt(frequencyInputs[day]);
+          if(userFreq !== completionCounts[i]){
+            allCorrect = false;
+            errors.push(`${day} frequency should be ${completionCounts[i]}`);
+          }
+        }
+      });
+      
+      if(allCorrect){
+        setScore(s => s + 1);
+        setFeedback('✓ All correct!');
+        setAsked(a => a + 1);
+      } else {
+        setFeedback(`✗ Errors: ${errors.join(', ')}`);
+        setAsked(a => a + 1);
+      }
+      return;
+    }
+    
     if(hasParts){
       let localScore = 0;
       const normalize = (v) => String(v).replace(/\s/g,'').toLowerCase();
@@ -776,15 +1027,27 @@ export default function Quiz({onBack, topic}){
                                         userLower.includes('wrong') || 
                                         userLower.includes('incorrect') ||
                                         userLower.includes('differ') ||
-                                        userLower.includes('not');
+                                        userLower.includes('not') ||
+                                        userLower.includes('only') ||
+                                        userLower.includes('cannot') ||
+                                        userLower.includes("can't") ||
+                                        userLower.includes('impossible') ||
+                                        userLower.includes('reality');
+              
+              // Check for relevant terms
               const hasFrequency = userLower.includes('frequency') || userLower.includes('freq');
               const hasTally = userLower.includes('tally') || userLower.includes('talli');
+              const hasSymbols = userLower.includes('symbol') || userLower.includes('circle') || 
+                                userLower.includes('key') || userLower.includes('represent');
+              const hasNumbers = /\d+\.?\d*/.test(userLower); // Contains numbers
+              const hasHalfConcept = userLower.includes('half') || userLower.includes('.5') || userLower.includes('decimal');
+              const hasChocolate = userLower.includes('chocolate') || userLower.includes('bar') || userLower.includes('sold');
               
-              if (hasMismatchConcept && (hasFrequency || hasTally)) {
+              if (hasMismatchConcept && (hasFrequency || hasTally || hasSymbols || hasNumbers || hasHalfConcept || hasChocolate)) {
                 correct = true;
               }
             }
-          } else {
+          }else {
             // Default exact normalized match
             correct = normalizedUser === normalizedExpected;
           }
@@ -838,6 +1101,7 @@ export default function Quiz({onBack, topic}){
   };
 
   const renderSymbols = (count, keyVal = 1) => {
+    if (count === null || count === undefined || isNaN(count)) return null;
     const fullCount = Math.floor(count);
     const decimal = count - fullCount;
     
@@ -890,6 +1154,205 @@ export default function Quiz({onBack, topic}){
   };
 
   const isTimetable = q.table && q.table.allTimes;
+  const isCompletion = q.table && q.table.isCompletion;
+
+  // Draggable circle options for pictogram completion
+  const renderDraggableCircles = () => {
+    if (!isCompletion) return null;
+    
+    const circleOptions = ['full', 'half'];
+    
+    const handleCircleDragStart = (circleType) => (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDraggedCircle(circleType);
+      setIsDragging(true);
+      setDragPosition({x: e.clientX, y: e.clientY});
+    };
+
+    return (
+      <View style={{marginTop: 15, marginBottom: 10, alignItems: 'center'}}>
+        <Text style={{fontSize: 16, fontWeight: 'bold', marginBottom: 10}}>Drag circles to complete the pictogram:</Text>
+        <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 15}}>
+          {circleOptions.map((circleType, idx) => {
+            return (
+              <View
+                key={idx}
+                onMouseDown={handleCircleDragStart(circleType)}
+                style={{
+                  padding: 12,
+                  backgroundColor: '#f0f0f0',
+                  borderRadius: 8,
+                  borderWidth: 2,
+                  borderColor: '#666',
+                  minWidth: 80,
+                  alignItems: 'center',
+                  userSelect: 'none',
+                  cursor: 'grab',
+                  WebkitUserSelect: 'none',
+                  MozUserSelect: 'none',
+                  msUserSelect: 'none'
+                }}
+              >
+                {circleType === 'full' ? renderSymbols(1, 1) : renderSymbols(0.5, 1)}
+              </View>
+            );
+          })}
+          {/* Removal zone for circles */}
+          <View
+            ref={(ref) => {
+              if (ref && isDragging && (draggedCircle !== null || dragFromCircleCell)) {
+                const rect = ref.getBoundingClientRect();
+                window.removalZone = {
+                  x: rect.left,
+                  y: rect.top,
+                  width: rect.width,
+                  height: rect.height
+                };
+              }
+            }}
+            style={{
+              padding: 12,
+              backgroundColor: isDragging && (draggedCircle !== null || dragFromCircleCell) ? '#ffebee' : '#fafafa',
+              borderRadius: 8,
+              borderWidth: 2,
+              borderColor: isDragging && (draggedCircle !== null || dragFromCircleCell) ? '#f44336' : '#999',
+              borderStyle: isDragging && (draggedCircle !== null || dragFromCircleCell) ? 'dashed' : 'solid',
+              minWidth: 80,
+              minHeight: 54,
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Text style={{fontSize: 14, fontWeight: 'bold', color: isDragging && (draggedCircle !== null || dragFromCircleCell) ? '#f44336' : '#999'}}>
+              {isDragging && (draggedCircle !== null || dragFromCircleCell) ? '🗑️ Drop to Remove' : '🗑️ Remove'}
+            </Text>
+          </View>
+        </View>
+        {/* Floating drag preview for circles */}
+        {isDragging && (draggedCircle !== null || dragFromCircleCell) && (
+          <View style={{
+            position: 'fixed',
+            left: dragPosition.x,
+            top: dragPosition.y,
+            backgroundColor: 'rgba(33, 150, 243, 0.9)',
+            padding: 10,
+            borderRadius: 8,
+            zIndex: 10000,
+            pointerEvents: 'none',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            transform: 'translate(-50%, -50%)'
+          }}>
+            {draggedCircle !== null ? (
+              draggedCircle === 'full' ? renderSymbols(1, 1) : renderSymbols(0.5, 1)
+            ) : dragFromCircleCell ? (
+              droppedCircles[dragFromCircleCell.day]?.[dragFromCircleCell.index] === 'full' 
+                ? renderSymbols(1, 1) 
+                : renderSymbols(0.5, 1)
+            ) : null}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Draggable tally options for completion questions with true drag and drop
+  const renderDraggableTallies = () => {
+    if (!isCompletion) return null;
+    
+    const tallyOptions = [1, 2, 3, 4, 5];
+    
+    const handleDragStart = (count) => (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDraggedTally(count);
+      setIsDragging(true);
+      setDragPosition({x: e.clientX, y: e.clientY});
+    };
+
+    return (
+      <View style={{marginVertical: 20, alignItems: 'center'}}>
+        <Text style={{fontSize: 16, fontWeight: 'bold', marginBottom: 12}}>Drag tally marks to the table cells:</Text>
+        <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 15}}>
+          {tallyOptions.map((count, idx) => {
+            return (
+              <View
+                key={idx}
+                onMouseDown={handleDragStart(count)}
+                style={{
+                  padding: 12,
+                  backgroundColor: '#f0f0f0',
+                  borderRadius: 8,
+                  borderWidth: 2,
+                  borderColor: '#666',
+                  minWidth: 80,
+                  alignItems: 'center',
+                  userSelect: 'none',
+                  cursor: 'grab',
+                  WebkitUserSelect: 'none',
+                  MozUserSelect: 'none',
+                  msUserSelect: 'none'
+                }}
+              >
+                <TallyGroup count={count} />
+              </View>
+            );
+          })}
+          {/* Removal zone */}
+          <View
+            ref={(ref) => {
+              if (ref) {
+                setTimeout(() => {
+                  if (ref.getBoundingClientRect) {
+                    const rect = ref.getBoundingClientRect();
+                    window.removalZone = {
+                      x: rect.left,
+                      y: rect.top,
+                      width: rect.width,
+                      height: rect.height
+                    };
+                  }
+                }, 200);
+              }
+            }}
+            style={{
+              padding: 12,
+              backgroundColor: isDragging && (draggedTally !== null || dragFromCell) ? '#ffebee' : '#fafafa',
+              borderRadius: 8,
+              borderWidth: 2,
+              borderColor: isDragging && (draggedTally !== null || dragFromCell) ? '#f44336' : '#999',
+              borderStyle: isDragging && (draggedTally !== null || dragFromCell) ? 'dashed' : 'solid',
+              minWidth: 80,
+              minHeight: 54,
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Text style={{fontSize: 14, fontWeight: 'bold', color: isDragging && (draggedTally !== null || dragFromCell) ? '#f44336' : '#999'}}>
+              {isDragging && (draggedTally !== null || dragFromCell) ? '🗑️ Drop to Remove' : '🗑️ Remove'}
+            </Text>
+          </View>
+        </View>
+        {/* Floating drag preview for tallies */}
+        {isDragging && (draggedTally !== null || dragFromCell) && (
+          <View style={{
+            position: 'fixed',
+            left: dragPosition.x,
+            top: dragPosition.y,
+            backgroundColor: 'rgba(33, 150, 243, 0.9)',
+            padding: 10,
+            borderRadius: 8,
+            zIndex: 10000,
+            pointerEvents: 'none',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+            transform: 'translate(-50%, -50%)'
+          }}>
+            <TallyGroup count={draggedTally || (dragFromCell && droppedTallies[dragFromCell.day]?.[dragFromCell.index])} />
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.root}>
@@ -976,11 +1439,115 @@ export default function Quiz({onBack, topic}){
                     <View style={[styles.tableCell, {flex: 1}]}>
                       <Text style={styles.cellText}>{row.day}</Text>
                     </View>
-                    <View style={[styles.tableCell, {flex: 1.5, alignItems: 'flex-start'}]}>
-                      <TallyGroup count={row.tallyCount} />
+                    <View 
+                      ref={(ref) => {
+                        if (ref && row.tallyCount === null) {
+                          const measureTarget = () => {
+                            if (ref.getBoundingClientRect) {
+                              const rect = ref.getBoundingClientRect();
+                              setDropTargets(prev => ({
+                                ...prev,
+                                [row.day]: {
+                                  x: rect.left,
+                                  y: rect.top,
+                                  width: rect.width,
+                                  height: rect.height
+                                }
+                              }));
+                            }
+                          };
+                          setTimeout(measureTarget, 200);
+                        }
+                      }}
+                      style={[styles.tableCell, {flex: 1.5, alignItems: 'flex-start'}]}
+                    >
+                      {row.tallyCount === null ? (
+                        // Drop zone with progressive highlights
+                        <View
+                          style={{
+                            minWidth: 80,
+                            minHeight: 30,
+                            justifyContent: 'center',
+                            alignItems: 'flex-start',
+                            padding: 2,
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: 2
+                          }}
+                        >
+                          {(droppedTallies[row.day] || []).map((tallyCount, idx) => (
+                            <View
+                              key={idx}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDraggedTally(null);
+                                setIsDragging(true);
+                                setDragPosition({x: e.clientX, y: e.clientY});
+                                setDragFromCell({day: row.day, index: idx});
+                              }}
+                              style={{
+                                cursor: 'grab',
+                                userSelect: 'none',
+                                marginRight: 2,
+                                padding: 1,
+                                backgroundColor: 'rgba(33, 150, 243, 0.05)',
+                                borderRadius: 2
+                              }}
+                            >
+                              <TallyGroup count={tallyCount} />
+                            </View>
+                          ))}
+                          {isDragging && draggedTally !== null && (
+                            <View
+                              style={{
+                                minWidth: 50,
+                                minHeight: 30,
+                                marginRight: 5,
+                                padding: 3,
+                                backgroundColor: 'rgba(33, 150, 243, 0.2)',
+                                borderRadius: 4,
+                                borderWidth: 2,
+                                borderColor: '#2196F3',
+                                borderStyle: 'dashed',
+                                justifyContent: 'center',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <Text style={{color: '#2196F3', fontSize: 10}}>Drop here</Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : (
+                        <TallyGroup count={row.tallyCount} />
+                      )}
                     </View>
                     <View style={[styles.tableCell, {flex: 1}]}>
-                      <Text style={styles.cellText}>{row.frequency}</Text>
+                      {row.frequency === null ? (
+                        // Input box for frequency
+                        <TextInput
+                          style={{
+                            width: '90%',
+                            height: 35,
+                            borderWidth: 1,
+                            borderColor: '#2196F3',
+                            borderRadius: 4,
+                            paddingHorizontal: 8,
+                            fontSize: 16,
+                            textAlign: 'center',
+                            backgroundColor: '#fff'
+                          }}
+                          value={frequencyInputs[row.day] || ''}
+                          onChangeText={(text) => {
+                            setFrequencyInputs({...frequencyInputs, [row.day]: text});
+                          }}
+                          keyboardType="numeric"
+                          placeholder="?"
+                          placeholderTextColor="#999"
+                        />
+                      ) : (
+                        <Text style={styles.cellText}>{row.frequency}</Text>
+                      )}
                     </View>
                   </>
                 ) : (
@@ -993,8 +1560,10 @@ export default function Quiz({onBack, topic}){
               </View>
             ))}
           </View>
-          {/* Part (a) directly below the tally table */}
-          {q.table.isTally && q.parts && q.parts.length > 0 && (
+          {/* Tally options for completion questions */}
+          {isCompletion && renderDraggableTallies()}
+          {/* Part (a) for non-completion tally questions */}
+          {q.table.isTally && !isCompletion && q.parts && q.parts.length > 0 && (
             <View style={{width:'95%'}}>
               <Text style={styles.partIndicator}>Answer the part below:</Text>
               <View style={styles.partRow}>
@@ -1028,8 +1597,70 @@ export default function Quiz({onBack, topic}){
                       <View style={[styles.tableCell, {flex:1}]}> 
                         <Text style={styles.cellText}>{row[0]}</Text>
                       </View>
-                      <View style={[styles.tableCell, {flex:2}]}> 
-                        {renderSymbols(row[1], q.extraTable.key)}
+                      <View 
+                        ref={(ref) => {
+                          if (ref && row[1] === null && q.extraTable.isIncomplete) {
+                            setTimeout(() => {
+                              if (ref.getBoundingClientRect) {
+                                const rect = ref.getBoundingClientRect();
+                                setCircleDropTargets(prev => ({
+                                  ...prev,
+                                  [row[0]]: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}
+                                }));
+                              }
+                            }, 200);
+                          }
+                        }}
+                        style={[styles.tableCell, {flex:2, alignItems: 'flex-start', justifyContent: 'flex-start'}]}
+                      > 
+                        {row[1] === null && q.extraTable.isIncomplete ? (
+                          <View style={{
+                            minWidth: 100,
+                            minHeight: 30,
+                            padding: 2,
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: 2,
+                            justifyContent: 'flex-start',
+                            alignItems: 'center',
+                            width: '100%'
+                          }}>
+                            {(droppedCircles[row[0]] || []).map((circleType, idx) => (
+                              <View
+                                key={idx}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDraggedCircle(null);
+                                  setIsDragging(true);
+                                  setDragPosition({x: e.clientX, y: e.clientY});
+                                  setDragFromCircleCell({day: row[0], index: idx});
+                                }}
+                                style={{cursor: 'grab', userSelect: 'none', marginRight: 2}}
+                              >
+                                {circleType === 'full' ? renderSymbols(1, 1) : renderSymbols(0.5, 1)}
+                              </View>
+                            ))}
+                            {isDragging && draggedCircle !== null && (
+                              <View style={{
+                                minWidth: 40,
+                                minHeight: 30,
+                                padding: 3,
+                                backgroundColor: 'rgba(33, 150, 243, 0.2)',
+                                borderRadius: 4,
+                                borderWidth: 2,
+                                borderColor: '#2196F3',
+                                borderStyle: 'dashed',
+                                justifyContent: 'center',
+                                alignItems: 'center'
+                              }}>
+                                <Text style={{color: '#2196F3', fontSize: 10}}>Drop here</Text>
+                              </View>
+                            )}
+                          </View>
+                        ) : (
+                          renderSymbols(row[1], q.extraTable.key)
+                        )}
                       </View>
                     </View>
                   ))}
@@ -1049,7 +1680,10 @@ export default function Quiz({onBack, topic}){
                   </View>
                 </View>
               </View>
-              {q.parts && q.parts.length > 1 && (
+              {/* Circle options for pictogram completion */}
+              {isCompletion && q.extraTable.isIncomplete && renderDraggableCircles()}
+              {/* Parts below pictogram for non-completion questions */}
+              {!isCompletion && q.parts && q.parts.length > 1 && (
                 <View style={{width:'95%'}}>
                   <Text style={styles.partIndicator}>Answer the parts below:</Text>
                   {q.parts.slice(1).map((p, idx) => (
