@@ -95,7 +95,9 @@ export default function Pictogram({ onBack, title = 'Pictogram & Tally Chart Exa
 const styles = StyleSheet.create({
   root: { flex: 1, padding: 16, backgroundColor: '#fff' },
   title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', marginTop: 12, marginBottom: 8 },
+  // Use Times New Roman for question/prompt style to match Quiz styling
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 12, fontFamily: 'Times New Roman' },
+  sectionTitle: { fontSize: 18, fontWeight: '700', marginTop: 12, marginBottom: 8, fontFamily: 'Times New Roman' },
   table: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, overflow: 'hidden' },
   row: { flexDirection: 'row', borderTopWidth: 1, borderColor: '#eee' },
   headerRow: { backgroundColor: '#f6f8fb' },

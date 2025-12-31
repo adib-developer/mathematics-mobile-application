@@ -39,6 +39,8 @@ export default function Practice({onBack}){
 const styles = StyleSheet.create({
   root:{alignItems:'center'},
   title:{fontSize:24,fontWeight:'700',marginBottom:10},
+  // Use Times New Roman for question-like text to match Quiz styles
+  titleText:{fontSize:24,fontWeight:'700',marginBottom:10, fontFamily: 'Times New Roman'},
   row:{flexDirection:'row',alignItems:'center',gap:8},
   num:{borderWidth:1,borderColor:'#ccc',padding:8,borderRadius:6,width:70,textAlign:'center',marginHorizontal:6},
   op:{padding:8,marginHorizontal:2,backgroundColor:'#eee',borderRadius:6},
